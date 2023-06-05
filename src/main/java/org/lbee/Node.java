@@ -100,7 +100,7 @@ public class Node {
         this.specCurrentTerm = spec.getVariable("currentTerm").getField(nodeInfo.name());
         this.specMessages = spec.getVariable("messages");
         // Feature flags
-        this.reduceSSflag = false;
+        this.reduceSSflag = true;
     }
 
     private void setState(NodeState state) {

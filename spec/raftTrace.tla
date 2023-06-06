@@ -35,6 +35,8 @@ AddElement(cur, val) == cur \cup {val}
 AddElements(cur, vals) == cur \cup ToSet(vals)
 RemoveElement(cur, val) == cur \ {val}
 Clear(cur, val) == {}
+
+AppendElement(cur, val) == Append(cur, val)
 \*RemoveKey(cur, val) == Nil
 RemoveKey(cur, val) == [k \in DOMAIN cur |-> IF k = val THEN Nil ELSE cur[k]]
 UpdateRec(cur, val) == [k \in DOMAIN cur |-> IF k \in DOMAIN val THEN val[k] ELSE cur[k]]
@@ -79,6 +81,7 @@ Apply(var, default, op, args) ==
     []   op = "RemoveFromBag" -> RemoveFromBag(var, args[1])
     []   op = "Add" -> Add(var, args[1])
     []   op = "Clear" -> Clear(var, <<>>)
+    []   op = "AppendElement" -> AppendElement(var, args[1])
     []   op = "RemoveKey" -> RemoveKey(var, args[1])
     []   op = "UpdateRec" -> UpdateRec(var, args[1])
     []   op = "Init" -> Replace(var, default)

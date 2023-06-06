@@ -47,7 +47,7 @@ public class Node {
         return logs.size();
     }
 
-    public int getLastLogTerm() {
+    public long getLastLogTerm() {
         return logs.size() == 0 ? 0 : logs.get(logs.size() - 1).getTerm();
     }
 
@@ -62,6 +62,7 @@ public class Node {
     private final VirtualField specCommitIndex;
     private final VirtualField specCurrentTerm;
     private final VirtualField specMessages;
+    private final VirtualField specLog;
 
 
     private boolean reduceSSflag;
@@ -95,10 +96,11 @@ public class Node {
         this.specVotesResponded = spec.getVariable("votesResponded").getField(nodeInfo.name());
         this.specVotesGranted = spec.getVariable("votesGranted").getField(nodeInfo.name());
         this.specNextIndex = spec.getVariable("nextIndex").getField(nodeInfo.name());
-        this.specMatchIndex = spec.getVariable("matchIndex").getField(nodeInfo.name());
+        this.specMatchIndex = spec.getVariable( "matchIndex").getField(nodeInfo.name());
         this.specCommitIndex = spec.getVariable("commitIndex").getField(nodeInfo.name());
         this.specCurrentTerm = spec.getVariable("currentTerm").getField(nodeInfo.name());
         this.specMessages = spec.getVariable("messages");
+        this.specLog = spec.getVariable("log").getField(nodeInfo.name());
         // Feature flags
         this.reduceSSflag = true;
     }
@@ -206,6 +208,11 @@ public class Node {
                 restart();
         }, 1000);
 
+        final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
+            if (rand.nextInt(0, 10) == 0)
+                clientRequest();
+        }, 1000);
+
         while (!shutdown) {
 
             // Leader send heartbeat every 500ms
@@ -216,6 +223,8 @@ public class Node {
 
             takeMessage();
 
+            // Simulate a client request to that node
+            clientRequestTrigger.run();
 
             // Restart node randomly
             restartTrigger.run();
@@ -395,6 +404,22 @@ public class Node {
         }
 
         spec.commitChanges("BecomeLeader");
+    }
+
+    private void clientRequest() {
+        if (state != NodeState.Leader)
+            return;
+//    /\ LET entry == [term  |-> currentTerm[i],
+//                value |-> v]
+//        newLog == Append(log[i], entry)
+//        IN  log' = [log EXCEPT ![i] = newLog]
+
+        final Entry entry = new Entry(term, Helpers.pickRandomVal(configuration));
+        logs.add(entry);
+
+        System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
+        specLog.apply("AppendElement", entry);
+        spec.commitChanges("ClientRequest");
     }
 
 

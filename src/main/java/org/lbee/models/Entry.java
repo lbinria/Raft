@@ -2,13 +2,14 @@ package org.lbee.models;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import org.lbee.instrumentation.TLASerializer;
 
-public class Entry {
+public class Entry implements TLASerializer {
 
-    private final int term;
+    private final long term;
     private final String content;
 
-    public Entry(int term, String content) {
+    public Entry(long term, String content) {
         this.term = term;
         this.content = content;
     }
@@ -18,7 +19,7 @@ public class Entry {
         this.content = jsonObject.get("content").getAsString();
     }
 
-    public int getTerm() {
+    public long getTerm() {
         return term;
     }
 
@@ -27,9 +28,14 @@ public class Entry {
     }
 
     public JsonElement toJson() {
-        JsonObject jsonObject = new JsonObject();
+        return tlaSerialize();
+    }
+
+    @Override
+    public JsonElement tlaSerialize() {
+        final JsonObject jsonObject = new JsonObject();
         jsonObject.addProperty("term", term);
-        jsonObject.addProperty("content", content);
+        jsonObject.addProperty("value", content);
         return jsonObject;
     }
 }

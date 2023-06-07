@@ -4,7 +4,6 @@ EXTENDS TLC, Sequences, SequencesExt, Naturals, FiniteSets, Bags, Json, IOUtils,
 
 ASSUME TLCGet("config").mode = "bfs"
 
-VARIABLES l
 (* Read trace *)
 \*JsonTrace ==
 \*    IF "TRACE_PATH" \in DOMAIN IOEnv THEN
@@ -116,11 +115,61 @@ RA == INSTANCE raft
 TraceInit ==
     \* The implementation's initial state is deterministic and known.
     \* TLCGet("level") = 1 => /\ KV!Init
-    /\ l = 1
-    /\ Init
+    TRUE
 
-logline ==
-    Trace[l]
+TraceNext ==
+    LET lvl == TLCGet("level") IN
+    LET tr == Trace[lvl] IN
+        \/
+            /\ tr.desc = "Restart"
+            /\
+                \/
+                    /\ "node" \in DOMAIN tr
+                    /\ Restart(tr.node)
+                \/
+                    \E i \in Server : Restart(i)
+        \/
+            /\ tr.desc = "Timeout"
+            /\
+                \/
+                    /\ "node" \in DOMAIN tr
+                    /\ Timeout(tr.node)
+                \/
+                    /\ \E i \in Server : Timeout(i)
+        \/
+            /\ tr.desc = "RequestVote"
+            /\
+                \/
+                    /\ "src" \in DOMAIN tr
+                    /\ "dest" \in DOMAIN Trace[lvl]
+                    /\ RequestVote(tr.src, tr.dest)
+                \/
+                    /\ \E i,j \in Server : RequestVote(i, j)
+        \/
+            /\ tr = "BecomeLeader"
+            /\
+                \/
+                    /\ "node" \in DOMAIN tr
+                    /\ BecomeLeader(tr.node)
+                \/
+                    /\ \E i \in Server : BecomeLeader(i)
+       \/
+            /\ tr = "HandleRequestVoteRequest"
+            /\ \E m \in DOMAIN messages :
+                LET i == m.mdest
+                j == m.msource IN
+                /\ m.mtype = RequestVoteRequest
+                /\ HandleRequestVoteRequest(i, j, m)
+
+TraceSpec ==
+    \* Because of  [A]_v <=> A \/ v=v'  , the following formula is logically
+     \* equivalent to the (canonical) Spec formual  Init /\ [][Next]_vars  .
+     \* However, TLC's breadth-first algorithm does not explore successor
+     \* states of a *seen* state.  Since one or more states may appear one or
+     \* more times in the the trace, the  UNCHANGED vars  combined with the
+     \*  TraceView  that includes  TLCGet("level")  is our workaround.
+    TraceInit /\ [][Next \/ UNCHANGED vars]_vars
+
 
 MapVariables(t) ==
     /\
@@ -170,116 +219,6 @@ TraceNextConstraint ==
         /\ i <= Len(Trace)
         /\ MapVariables(Trace[i])
 
-
-IsEvent(e) ==
-    \* Equals FALSE if we get past the end of the log, causing model checking to stop.
-    /\ l \in 1..Len(Trace)
-    /\ IF "desc" \in DOMAIN logline THEN logline.desc = e ELSE TRUE
-    /\ l' = l + 1
-    /\ MapVariables(Trace[l])
-\*    /\ Next
-    /\ allLogs' = allLogs \cup {log[i] : i \in Server}
-
-IsRestart ==
-    /\ IsEvent("Restart")
-    /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ Restart(logline.node)
-        \/
-            \E i \in Server : Restart(i)
-
-IsTimeout ==
-    /\ IsEvent("Timeout")
-    /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ Timeout(logline.node)
-        \/
-            /\ \E i \in Server : Timeout(i)
-
-IsRequestVote ==
-    /\ IsEvent("RequestVoteRequest")
-    /\
-        \/
-            /\ "src" \in DOMAIN logline
-            /\ "dest" \in DOMAIN logline
-            /\ RequestVote(logline.src, logline.dest)
-        \/
-            /\ \E i,j \in Server : RequestVote(i, j)
-
-IsBecomeLeader ==
-    /\ IsEvent("BecomeLeader")
-    /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ BecomeLeader(logline.node)
-        \/
-            /\ \E i \in Server : BecomeLeader(i)
-
-IsHandleRequestVoteRequest ==
-    /\ IsEvent("HandleRequestVoteRequest")
-    /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        /\ m.mtype = RequestVoteRequest
-        /\ HandleRequestVoteRequest(i, j, m)
-
-IsHandleRequestVoteResponse ==
-    /\ IsEvent("HandleRequestVoteResponse")
-    /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        /\ m.mtype = RequestVoteResponse
-        /\ HandleRequestVoteResponse(i, j, m)
-
-IsUpdateTerm ==
-    /\ IsEvent("UpdateTerm")
-    /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        UpdateTerm(i, j, m)
-
-IsClientRequest ==
-    /\ IsEvent("ClientRequest")
-    /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ "val" \in DOMAIN logline
-            /\ ClientRequest(logline.node, logline.val)
-        \/
-            /\ \E i \in Server, v \in Value : ClientRequest(i, v)
-
-IsAppendEntries ==
-    /\ IsEvent("AppendEntries")
-    /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        AppendEntries(i, j)
-
-
-TraceNext ==
-        \/ IsRestart
-        \/ IsTimeout
-        \/ IsRequestVote
-        \/ IsBecomeLeader
-        \/ IsHandleRequestVoteRequest
-        \/ IsHandleRequestVoteResponse
-        \/ IsUpdateTerm
-        \/ IsClientRequest
-        \/ IsAppendEntries
-
-ComposedNext == TRUE
-
-TraceSpec ==
-    \* Because of  [A]_v <=> A \/ v=v'  , the following formula is logically
-     \* equivalent to the (canonical) Spec formual  Init /\ [][Next]_vars  .
-     \* However, TLC's breadth-first algorithm does not explore successor
-     \* states of a *seen* state.  Since one or more states may appear one or
-     \* more times in the the trace, the  UNCHANGED vars  combined with the
-     \*  TraceView  that includes  TLCGet("level")  is our workaround.
-    TraceInit /\ [][TraceNext]_<<l, vars>>
-
 TraceAccepted ==
     LET d == TLCGet("stats").diameter IN
     IF d - 1 = Len(Trace) THEN TRUE
@@ -308,8 +247,5 @@ TraceAlias ==
         ]
     ]
 
-
-BASE == INSTANCE raft
-BaseSpec == BASE!Init /\ [][BASE!Next \/ ComposedNext]_BASE!vars
 -----------------------------------------------------------------------------
 =============================================================================

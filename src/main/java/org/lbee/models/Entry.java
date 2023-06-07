@@ -38,4 +38,9 @@ public class Entry implements TLASerializer {
         jsonObject.addProperty("value", content);
         return jsonObject;
     }
+
+    @Override
+    public String toString() {
+        return tlaSerialize().toString();
+    }
 }

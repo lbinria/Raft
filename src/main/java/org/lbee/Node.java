@@ -33,7 +33,8 @@ public class Node {
     private Configuration configuration;
 
 
-    private final Random rand;
+    private final Random randTimeout;
+    private final Random randEvent;
 
     private final HashMap<String, NetworkManager> networkManagers;
     private final Server server;
@@ -71,7 +72,8 @@ public class Node {
         this.term = 1;
         this.state = NodeState.Follower;
         this.logs = new ArrayList<>();
-        this.rand = new Random(nodeInfo.seed());
+        this.randTimeout = new Random(nodeInfo.seed());
+        this.randEvent = new Random(6);
         this.nodeInfo = nodeInfo;
         this.clusterInfo = clusterInfo;
         this.networkManagers = new HashMap<>();
@@ -85,7 +87,7 @@ public class Node {
 
         this.shutdown = false;
 
-        electionTimeout = 1000 + rand.nextInt(0, 5000);
+        electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
 
         configuration = new Configuration(10, false);
@@ -192,7 +194,7 @@ public class Node {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }, 10000);
+        }, 20000);
 
         final IntervalTrigger sendHeartbeatTrigger =  new IntervalTrigger(() -> {
             try {
@@ -204,13 +206,23 @@ public class Node {
         }, 500);
 
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
-            if (rand.nextInt(0, 10) == 0)
+            if (randEvent.nextInt(0, 10) == 0)
                 restart();
         }, 1000);
 
         final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
-            if (rand.nextInt(0, 10) == 0)
+            if (randEvent.nextInt(0, 10) == 0)
                 clientRequest();
+        }, 1000);
+
+        final IntervalTrigger appendEntriesTrigger = new IntervalTrigger(() -> {
+            if (randEvent.nextInt(0, 10) == 0) {
+                try {
+                    appendEntries();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }, 1000);
 
         while (!shutdown) {
@@ -241,7 +253,7 @@ public class Node {
 
         // Next election timeout will be between 5-10 s.
         lastHeartbeat = System.currentTimeMillis();
-        electionTimeout = 5000 + rand.nextInt(0, 5000);
+        electionTimeout = 5000 + randTimeout.nextInt(0, 5000);
 
 
         // Change state to candidate
@@ -263,6 +275,10 @@ public class Node {
         // Necessary log if we want obtains Quorum, because trace spec can check holes
         // in variable, but not hole in event
         // Reproduce bug by commenting this bloc, show with tla+ debug how to find what's wrong ! by using hit count and ENABLED
+        if (reduceSSflag) {
+            final Message fakeMessage = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
+            specMessages.apply("AddToBag", fakeMessage);
+        }
         spec.commitChanges("RequestVoteRequest");
         specVotedFor.set(nodeInfo.name());
         spec.commitChanges("HandleRequestVoteRequest");
@@ -420,6 +436,34 @@ public class Node {
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
         specLog.apply("AppendElement", entry);
         spec.commitChanges("ClientRequest");
+    }
+
+    private void appendEntries() throws IOException {
+        assert state == NodeState.Leader : "Only leader can send append entries requests.";
+
+        for (NodeInfo ni : clusterInfo.getNodeList()) {
+            if (!ni.name().equals(nodeInfo.name()))
+                appendEntries(ni.name());
+        }
+    }
+
+    private void appendEntries(String nodeName) throws IOException {
+        int nextIndex = leaderState.getNextIndexes().get(nodeName);
+        int previousIndex = nextIndex - 1;
+        // Note >= instead of > because of discrepancy between TLA base index = 1 and java => 0
+        long previousLogTerm = previousIndex >= 0 ? logs.get(previousIndex).getTerm() : 0;
+
+        final int lastEntryIndex = Math.min(logs.size(), nextIndex);
+        final List<Entry> entries = logs.subList(nextIndex, lastEntryIndex);
+
+        final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, commitIndex, 0);
+        spec.commitChanges("AppendEntries");
+        networkManagers.get(nodeName).send(appendEntriesRequest);
+//        prevLogTerm == IF prevLogIndex > 0 THEN
+//        log[i][prevLogIndex].term
+//        ELSE
+//        0
+
     }
 
 

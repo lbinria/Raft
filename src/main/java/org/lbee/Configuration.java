@@ -26,9 +26,9 @@ public class Configuration {
 
         final NodeInfo nodeInfo1 = new NodeInfo("node1", 4, "localhost", 1200);
         final NodeInfo nodeInfo2 = new NodeInfo("node2", 4200,"localhost", 1201);
-        //final NodeInfo nodeInfo3 = new NodeInfo("node3", "localhost", 1202);
+        final NodeInfo nodeInfo3 = new NodeInfo("node3", 6800, "localhost", 1202);
 
-        return new ClusterInfo(List.of(nodeInfo1, nodeInfo2/*, nodeInfo3*/));
+        return new ClusterInfo(List.of(nodeInfo1, nodeInfo2, nodeInfo3));
     }
 
     public List<String> getVals() { return vals; }

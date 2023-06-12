@@ -17,16 +17,16 @@ print("# Start implementation.\n")
 
 p1 = run_impl.run("node1")
 p2 = run_impl.run("node2")
-# p3 = run_impl.run("node3")
+p3 = run_impl.run("node3")
 
 # Wait all client are finished
 p1.wait()
 p2.wait()
-# p3.wait()
+p3.wait()
 
 p1.terminate()
 p2.terminate()
-# p3.terminate()
+p3.terminate()
 
 print("# Merge trace with config.\n")
 

@@ -194,7 +194,7 @@ public class Node {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }, 20000);
+        }, 60000);
 
         final IntervalTrigger sendHeartbeatTrigger =  new IntervalTrigger(() -> {
             try {
@@ -211,14 +211,15 @@ public class Node {
         }, 1000);
 
         final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 10) == 0)
+            if (randEvent.nextInt(0, 2) == 0)
                 clientRequest();
         }, 1000);
 
         final IntervalTrigger appendEntriesTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 10) == 0) {
+            if (randEvent.nextInt(0, 5) == 0) {
                 try {
-                    appendEntries();
+                    if (state == NodeState.Leader)
+                        appendEntries();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -237,7 +238,8 @@ public class Node {
 
             // Simulate a client request to that node
             clientRequestTrigger.run();
-
+            // Append entries sometimes
+            appendEntriesTrigger.run();
             // Restart node randomly
             restartTrigger.run();
             // Shutdown at some point
@@ -393,7 +395,7 @@ public class Node {
         // Add node that responded to my vote request
         candidateState.getResponded().add(m.getFrom());
 
-        if (!m.isGranted()) {
+        if (m.isGranted()) {
             // Add node that granted a vote to me
             candidateState.getGranted().add(m.getFrom());
             specVotesGranted.add(m.getFrom());
@@ -401,21 +403,24 @@ public class Node {
 
         spec.commitChanges("HandleRequestVoteResponse");
 
-        if (candidateState.getGranted().size() >= clusterInfo.getQuorum())
+        if (state == NodeState.Candidate && candidateState.getGranted().size() >= clusterInfo.getQuorum())
             becomeLeader();
     }
 
     // TLA:BecomeLeader
     public void becomeLeader() throws IOException {
+        // Note: weird ! assertion doesn't trigger when node is leader, it seems like it doesn't check == Candidate
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
         assert candidateState.getGranted().size() >= clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
+        // Note: bug found with trace validation at 57th depth
+//        assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
 
         toLeader();
         sendHeartbeat();
         System.out.printf("Node %s is Leader.\n", nodeInfo.name());
 
         for (NodeInfo ni : clusterInfo.getNodeList()) {
-            leaderState.getNextIndexes().put(ni.name(), logs.size() + 1);
+            leaderState.getNextIndexes().put(ni.name(), logs.size());
             leaderState.getMatchIndexes().put(ni.name(), 0);
         }
 
@@ -448,21 +453,32 @@ public class Node {
     }
 
     private void appendEntries(String nodeName) throws IOException {
+        // TODO optimization: when entries empty, quit
+
         int nextIndex = leaderState.getNextIndexes().get(nodeName);
         int previousIndex = nextIndex - 1;
         // Note >= instead of > because of discrepancy between TLA base index = 1 and java => 0
-        long previousLogTerm = previousIndex >= 0 ? logs.get(previousIndex).getTerm() : 0;
-
-        final int lastEntryIndex = Math.min(logs.size(), nextIndex);
-        final List<Entry> entries = logs.subList(nextIndex, lastEntryIndex);
-
-        final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, commitIndex, 0);
-        spec.commitChanges("AppendEntries");
-        networkManagers.get(nodeName).send(appendEntriesRequest);
 //        prevLogTerm == IF prevLogIndex > 0 THEN
 //        log[i][prevLogIndex].term
 //        ELSE
 //        0
+        long previousLogTerm = previousIndex >= 0 ? logs.get(previousIndex).getTerm() : 0;
+
+        // Note: -1
+        final int lastEntryIndex = Math.min(logs.size() - 1, nextIndex);
+
+        // Note: +1 exclusive
+        final List<Entry> entries = logs.subList(nextIndex, lastEntryIndex + 1);
+        System.out.printf("Take entries [%s, %s]\n", nextIndex, lastEntryIndex);
+
+        int msgCommitIndex = Math.min(commitIndex, lastEntryIndex);
+        final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, msgCommitIndex, 0);
+
+
+        System.out.println(appendEntriesRequest);
+        spec.commitChanges("AppendEntries");
+        networkManagers.get(nodeName).send(appendEntriesRequest);
+
 
     }
 

@@ -16,7 +16,7 @@ public class Entry implements TLASerializer {
 
     public Entry(JsonObject jsonObject) {
         this.term = jsonObject.get("term").getAsInt();
-        this.content = jsonObject.get("content").getAsString();
+        this.content = jsonObject.get("value").getAsString();
     }
 
     public long getTerm() {

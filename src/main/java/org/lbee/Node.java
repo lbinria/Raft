@@ -474,7 +474,11 @@ public class Node {
         int msgCommitIndex = Math.min(commitIndex, lastEntryIndex);
         final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, msgCommitIndex, 0);
 
-
+        // Note: Recompute some variable to log (because of index based is one in TLA+)
+        int msgCommitIndexLog = Math.min(commitIndex, lastEntryIndex + 1);
+        int previousIndexLog = previousIndex + 1;
+        final Message appendEntriesRequestLog = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndexLog, previousLogTerm, entries, msgCommitIndexLog, 0);
+        specMessages.apply("AddToBag", appendEntriesRequestLog);
         System.out.println(appendEntriesRequest);
         spec.commitChanges("AppendEntries");
         networkManagers.get(nodeName).send(appendEntriesRequest);

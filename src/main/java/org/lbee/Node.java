@@ -136,7 +136,7 @@ public class Node {
             // Skip this
             if (n.name().equals(nodeInfo.name()))
                 continue;
-
+                
             // Try to connect to other nodes
             try {
                 Socket socket = new Socket(n.hostname(), n.port());
@@ -147,7 +147,8 @@ public class Node {
             } catch (UnknownHostException ex) {
                 System.out.println("Server not found: " + ex.getMessage());
             } catch (IOException ex) {
-                System.out.println("I/O error: " + ex.getMessage());
+                System.out.println("HOST:" +n.hostname() +":"+ n.port());
+                System.out.println("I/O error: " + ex);
             }
         }
     }

@@ -10,6 +10,9 @@ import java.io.IOException;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Node {
 
@@ -119,7 +122,7 @@ public class Node {
 
     private void toLeader() {
         setState(NodeState.Leader);
-        leaderState = new LeaderState();
+        leaderState = new LeaderState(candidateState.getGranted());
         specState.set(state.toString());
     }
 
@@ -311,6 +314,8 @@ public class Node {
         {
             if (appendEntriesRequest.getEntries().isEmpty())
                 handleHeartbeat();
+            else
+                handleAppendEntriesRequest(appendEntriesRequest);
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
             //
@@ -483,8 +488,60 @@ public class Node {
         spec.commitChanges("AppendEntries");
         networkManagers.get(nodeName).send(appendEntriesRequest);
 
-
+        // Advance index
+        advanceCommitIndex();
     }
+
+    private void advanceCommitIndex() {
+
+        int maxAgreeIndex = -1;
+        for (int i = logs.size(); i > 0; i--) {
+            int finalI = i;
+            boolean allAgree = leaderState.getQuorum().stream().allMatch(nodeName -> leaderState.getMatchIndexes().get(nodeName) >= finalI);
+
+            if (allAgree)
+            {
+                maxAgreeIndex = i;
+                break;
+            }
+        }
+
+        if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex).getTerm() == term)
+            commitIndex = maxAgreeIndex;
+
+        specCommitIndex.set(commitIndex);
+        spec.commitChanges("AdvanceCommitIndex");
+    }
+
+    private void handleAppendEntriesRequest(AppendEntriesRequest appendEntriesRequest) throws IOException {
+//        LET logOk == \/ m.mprevLogIndex = 0
+//                 \/ /\ m.mprevLogIndex > 0
+//                /\ m.mprevLogIndex <= Len(log[i])
+//                /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
+
+        long previousLogIndex = appendEntriesRequest.getLastLogIndex();
+
+        boolean logOk = previousLogIndex == -1 ||
+                (previousLogIndex >= 0
+                        &&  previousLogIndex < logs.size()
+                        && appendEntriesRequest.getLastLogTerm() == logs.get((int)previousLogIndex).getTerm());
+
+        // Return to follower state
+        if (appendEntriesRequest.getTerm() == term && state == NodeState.Candidate)
+            toFollower();
+
+        if (appendEntriesRequest.getTerm() < term || (state == NodeState.Follower && !logOk))
+            rejectAppendEntries(appendEntriesRequest.getFrom());
+
+        spec.commitChanges("HandleAppendEntriesRequest");
+    }
+
+    private void rejectAppendEntries(String to) throws IOException {
+        System.out.print("Reject append entries.\n");
+        Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
+        networkManagers.get(to).send(appendEntriesResponse);
+    }
+
 
 
     public void shutdown() throws IOException {

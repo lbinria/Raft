@@ -6,14 +6,14 @@ ASSUME TLCGet("config").mode = "bfs"
 
 VARIABLES l
 (* Read trace *)
-\*JsonTrace ==
-\*    IF "TRACE_PATH" \in DOMAIN IOEnv THEN
-\*        ndJsonDeserialize(IOEnv.TRACE_PATH)
-\*    ELSE
-\*        Print(<<"Failed to validate the trace. TRACE_PATH environnement variable was expected.">>, "")
-
 JsonTrace ==
-        ndJsonDeserialize("/home/me/Projects/Raft/trace-tla.ndjson")
+    IF "TRACE_PATH" \in DOMAIN IOEnv THEN
+        ndJsonDeserialize(IOEnv.TRACE_PATH)
+    ELSE
+        Print(<<"Failed to validate the trace. TRACE_PATH environnement variable was expected.">>, "")
+
+\*JsonTrace ==
+\*        ndJsonDeserialize("/home/me/Projects/Raft/trace-tla.ndjson")
 
 (* Replace Nil by string *)
 TraceNil == "null"
@@ -257,6 +257,22 @@ IsAppendEntries ==
         j == m.msource IN
         AppendEntries(i, j)
 
+IsAdvanceCommitIndex ==
+    /\ IsEvent("AdvanceCommitIndex")
+    /\
+        \/
+            /\ "node" \in DOMAIN logline
+            /\ AdvanceCommitIndex(logline.node)
+        \/
+            /\ \E i \in Server : AdvanceCommitIndex(i)
+
+IsHandleAppendEntriesRequest ==
+    /\ IsEvent("HandleAppendEntriesRequest")
+    /\ \E m \in DOMAIN messages :
+        LET i == m.mdest
+        j == m.msource IN
+        /\ m.mtype = AppendEntriesRequest
+        /\ HandleAppendEntriesRequest(i, j, m)
 
 TraceNext ==
         \/ IsRestart
@@ -268,6 +284,8 @@ TraceNext ==
         \/ IsUpdateTerm
         \/ IsClientRequest
         \/ IsAppendEntries
+        \/ IsAdvanceCommitIndex
+        \/ IsHandleAppendEntriesRequest
 
 ComposedNext == TRUE
 

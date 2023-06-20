@@ -40,6 +40,7 @@ public class Node {
     private final Random randEvent;
 
     private final HashMap<String, NetworkManager> networkManagers;
+    private final Network network;
     private final Server server;
 
     private boolean shutdown;
@@ -80,6 +81,7 @@ public class Node {
         this.nodeInfo = nodeInfo;
         this.clusterInfo = clusterInfo;
         this.networkManagers = new HashMap<>();
+        this.network = new Network();
 
         // Listen for connections
         this.server = new Server(nodeInfo.port());
@@ -93,6 +95,7 @@ public class Node {
         electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
 
+        // why a new Configuration?
         configuration = new Configuration(10, false);
 
         this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
@@ -136,19 +139,20 @@ public class Node {
             // Skip this
             if (n.name().equals(nodeInfo.name()))
                 continue;
-
+                
             // Try to connect to other nodes
-            try {
-                Socket socket = new Socket(n.hostname(), n.port());
-                System.out.printf("Node %s try connect to %s node at %s:%s.\n", nodeInfo.name(), n.name(), n.hostname(), n.port());
-                NetworkManager nm = new NetworkManager(socket);
-                networkManagers.put(n.name(), nm);
-
-            } catch (UnknownHostException ex) {
-                System.out.println("Server not found: " + ex.getMessage());
-            } catch (IOException ex) {
-                System.out.println("I/O error: " + ex.getMessage());
-            }
+            // try {
+                // Socket socket = new Socket(n.hostname(), n.port());
+                // System.out.printf("Node %s try connect to %s node at %s:%s.\n", nodeInfo.name(), n.name(), n.hostname(), n.port());
+                // NetworkManager nm = new NetworkManager(socket);
+                // networkManagers.put(n.name(), nm);
+                network.addConnection(n.name(), n.hostname(), n.port());
+            // } catch (UnknownHostException ex) {
+            //     System.out.println("Server not found: " + ex.getMessage());
+            // } catch (IOException ex) {
+            //     System.out.println("HOST:" +n.hostname() +":"+ n.port());
+            //     System.out.println("I/O error: " + ex);
+            // }
         }
     }
 
@@ -342,7 +346,8 @@ public class Node {
                 continue;
 
             final Message heartbeatMessage = new AppendEntriesRequest(nodeInfo.name(), ni.name(), term, 0, 0, new ArrayList<>(), commitIndex, 0);
-            networkManagers.get(ni.name()).send(heartbeatMessage);
+            // networkManagers.get(ni.name()).send(heartbeatMessage);
+            network.send(ni.name(),heartbeatMessage);
         }
     }
 
@@ -370,7 +375,8 @@ public class Node {
                 specMessages.apply("AddToBag", message);
 
             spec.commitChanges("RequestVoteRequest");
-            networkManagers.get(ni.name()).send(message);
+            // networkManagers.get(ni.name()).send(message);
+            network.send(ni.name(),message);
         }
     }
 
@@ -388,7 +394,8 @@ public class Node {
         // Reply to vote request
         final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
         spec.commitChanges("HandleRequestVoteRequest");
-        networkManagers.get(m.getFrom()).send(response);
+        // networkManagers.get(m.getFrom()).send(response);
+        network.send(m.getFrom(),response);
     }
 
     public void handleVoteReply(RequestVoteResponse m) throws IOException {
@@ -486,7 +493,8 @@ public class Node {
         specMessages.apply("AddToBag", appendEntriesRequestLog);
         System.out.println(appendEntriesRequest);
         spec.commitChanges("AppendEntries");
-        networkManagers.get(nodeName).send(appendEntriesRequest);
+        // networkManagers.get(nodeName).send(appendEntriesRequest);
+        network.send(nodeName,appendEntriesRequest);
 
         // Advance index
         advanceCommitIndex();
@@ -546,10 +554,10 @@ public class Node {
 
     public void shutdown() throws IOException {
         // Request shutdown
-        for (NetworkManager nm : networkManagers.values()) {
-            nm.sendRaw("bye");
-        }
-
+        // for (NetworkManager nm : networkManagers.values()) {
+        //     nm.sendRaw("bye");
+        // }
+        network.shutdown();
         shutdown = true;
     }
 

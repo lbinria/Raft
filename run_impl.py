@@ -1,46 +1,42 @@
 import os
-import time
-import signal
-from subprocess import Popen, PIPE
-from threading import Timer
+from subprocess import Popen, PIPE, TimeoutExpired
+import ndjson
+import clean
+
+# Get paths
+java_home = os.environ["JAVA_HOME"]
+assert java_home != None, "JAVA_HOME variable is not set."
+java_bin = os.path.join(java_home, "java")
 
 def run(nodeName):
-    impl_process = Popen([
-        "/usr/lib/jvm/jdk-19/bin/java",
+    p = Popen([
+        java_bin,
         "-jar",
         "target/Raft-1.0-SNAPSHOT-jar-with-dependencies.jar",
         nodeName
         ])
-#         ], stderr=PIPE, stdout=PIPE)
+    return p
 
-    return impl_process
 
-def timeout_process(p):
-    my_timer = Timer(15, lambda p: p.kill(), [p])
+def run_all(timeout=5.):
+    # Load config
+    with open("raft.ndjson.conf", 'r') as f:
+        json_config = ndjson.load(f)
+
+    servers = json_config[0]['Server']
+
+    # Run all processes
+    processes =  [run(node_name) for node_name in servers]
     try:
-        my_timer.start()
-        stderr, stdout = p.communicate()
-        print(stdout)
-    finally:
-        my_timer.cancel()
+        for p in processes:
+            p.wait(timeout)
+    except TimeoutExpired:
+        print("Timeout reach.\n")
+        for p in processes:
+            p.terminate()
 
 
 if __name__ == "__main__":
-    p1 = run("node1")
-    p2 = run("node2")
-    # p3 = run("node3")
-
-#     timeout_process(p1)
-#     timeout_process(p2)
-
-    # Wait all client are finished
-    p1.wait()
-    p2.wait()
-#     p3.wait()
-
-    p1.terminate()
-    p2.terminate()
-#     p3.terminate()
-
-    # Kill server
-#     os.kill(server_process.pid, signal.SIGINT)
+    # Clean directory
+    clean.clean()
+    run_all()

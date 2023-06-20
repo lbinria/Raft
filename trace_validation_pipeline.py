@@ -1,32 +1,16 @@
-import os
-import time
-import signal
 from subprocess import Popen, PIPE
 import run_impl
 import trace_merger
+import clean
 
+print("# Clean up.\n")
 
-print("# Clean up")
+# Clean directory
+clean.clean()
 
-trace_files = [f for f in os.listdir(".") if f.endswith('.ndjson')]
-print(f"Cleanup: {trace_files}")
-for trace_file in trace_files:
-    os.remove(trace_file)
+print("# Run.\n")
 
-print("# Start implementation.\n")
-
-p1 = run_impl.run("node1")
-p2 = run_impl.run("node2")
-p3 = run_impl.run("node3")
-
-# Wait all client are finished
-p1.wait()
-p2.wait()
-p3.wait()
-
-p1.terminate()
-p2.terminate()
-p3.terminate()
+run_impl.run_all(15.)
 
 print("# Merge trace with config.\n")
 

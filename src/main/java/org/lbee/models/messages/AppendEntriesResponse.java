@@ -1,8 +1,10 @@
 package org.lbee.models.messages;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.lbee.instrumentation.TLASerializer;
+import org.lbee.models.Entry;
 
 public class AppendEntriesResponse extends Message implements TLASerializer {
 
@@ -19,7 +21,7 @@ public class AppendEntriesResponse extends Message implements TLASerializer {
         super(
                 jsonObject.get("msource").getAsString(),
                 jsonObject.get("mdest").getAsString(),
-                MessageType.RequestVoteRequest,
+                MessageType.AppendEntriesResponse,
                 jsonObject.get("mterm").getAsLong(),
                 jsonObject.get("senderClock").getAsLong()
         );
@@ -28,9 +30,22 @@ public class AppendEntriesResponse extends Message implements TLASerializer {
         this.matchIndex = jsonObject.get("mmatchIndex").getAsLong();
     }
 
+    @Override
+    public String toString() {
+        final JsonObject jsonObject = tlaSerialize().getAsJsonObject();
+        jsonObject.addProperty("senderClock", senderClock);
+        return jsonObject.toString();
+    }
 
     @Override
     public JsonElement tlaSerialize() {
-        return null;
+        final JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("msource", from);
+        jsonObject.addProperty("mdest", to);
+        jsonObject.addProperty("mtype", type.toString());
+        jsonObject.addProperty("mterm", term);
+        jsonObject.addProperty("msuccess", success);
+        jsonObject.addProperty("mmatchIndex", matchIndex);
+        return jsonObject;
     }
 }

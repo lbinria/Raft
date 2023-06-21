@@ -98,7 +98,9 @@ public class Node {
         electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
 
-        this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
+        final SharedClock clock = SharedClock.get("raft.clock");
+        clock.reset();
+        this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", clock);
         this.specState = spec.getVariable("state").getField(nodeInfo.name());
         this.specVotedFor = spec.getVariable("votedFor").getField(nodeInfo.name());
         this.specVotesResponded = spec.getVariable("votesResponded").getField(nodeInfo.name());
@@ -305,9 +307,12 @@ public class Node {
         if (message == null)
             return;
 
+
         // Update term first
         if (message.getTerm() > term)
             updateTerm(message.getTerm());
+
+        //specMessages.apply("RemoveFromBag", message);
 
         // Redirect according to message type
         if (message instanceof final RequestVoteRequest requestVoteRequest)
@@ -322,7 +327,7 @@ public class Node {
                 handleAppendEntriesRequest(appendEntriesRequest);
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
-            //
+            handleAppendEntriesResponse(appendEntriesResponse);
         }
 
 
@@ -495,9 +500,6 @@ public class Node {
         spec.commitChanges("AppendEntries");
         // networkManagers.get(nodeName).send(appendEntriesRequest);
         network.send(nodeName,appendEntriesRequest);
-
-        // Advance index
-        advanceCommitIndex();
     }
 
     private void advanceCommitIndex() {
@@ -517,7 +519,8 @@ public class Node {
         if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex).getTerm() == term)
             commitIndex = maxAgreeIndex;
 
-        specCommitIndex.set(commitIndex);
+        // +1 for base-1 indexing in spec
+        specCommitIndex.set(commitIndex + 1);
         spec.commitChanges("AdvanceCommitIndex");
     }
 
@@ -527,6 +530,8 @@ public class Node {
 //                /\ m.mprevLogIndex <= Len(log[i])
 //                /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
 
+        System.out.printf("handleAppendEntriesRequest %s.\n", appendEntriesRequest);
+
         long previousLogIndex = appendEntriesRequest.getLastLogIndex();
 
         boolean logOk = previousLogIndex == -1 ||
@@ -535,18 +540,76 @@ public class Node {
                         && appendEntriesRequest.getLastLogTerm() == logs.get((int)previousLogIndex).getTerm());
 
         // Return to follower state
-        if (appendEntriesRequest.getTerm() == term && state == NodeState.Candidate)
-            toFollower();
-
-        if (appendEntriesRequest.getTerm() < term || (state == NodeState.Follower && !logOk))
-            rejectAppendEntries(appendEntriesRequest.getFrom());
-
+        if (state == NodeState.Candidate) {
+            if (appendEntriesRequest.getTerm() == term)
+                toFollower();
+        }
+        else if (state == NodeState.Follower) {
+            if (appendEntriesRequest.getTerm() == term && logOk)
+                acceptAppendEntries(appendEntriesRequest);
+            else
+                rejectAppendEntries(appendEntriesRequest.getFrom());
+        }
         spec.commitChanges("HandleAppendEntriesRequest");
+    }
+
+    private void acceptAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
+        System.out.print("Accept append entries.\n");
+        int index = (int)appendEntriesRequest.getLastLogIndex() + 1;
+
+        // already done with request
+        //\/ m.mentries = << >>
+        //\/ /\ m.mentries /= << >>
+        ///\ Len(log[i]) >= index
+        ///\ log[i][index].term = m.mentries[1].term
+        if (appendEntriesRequest.getEntries().isEmpty() || (logs.size() > index && logs.get(index).getTerm() == appendEntriesRequest.getEntries().get(0).getTerm())) {
+//          /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
+            commitIndex = appendEntriesRequest.getCommitIndex();
+            specCommitIndex.set(commitIndex);
+//            /\ Reply([mtype           |-> AppendEntriesResponse,
+//            mterm           |-> currentTerm[i],
+//            msuccess        |-> TRUE,
+//            mmatchIndex     |-> m.mprevLogIndex +
+//            Len(m.mentries),
+//            msource         |-> i,
+//            mdest           |-> j],
+//            m)
+            int matchIndex = (int)appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size();
+            Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
+            network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
+        }
+
+        // TODO implement Conflict
+//        \/ \* conflict: remove 1 entry
+//        /\ m.mentries /= << >>
+//        /\ Len(log[i]) >= index
+//        /\ log[i][index].term /= m.mentries[1].term
+//        /\ LET new == [index2 \in 1..(Len(log[i]) - 1) |->
+//        log[i][index2]]
+//        IN log' = [log EXCEPT ![i] = new]
+//        /\ UNCHANGED <<serverVars, commitIndex, messages>>
+//        \/ \* no conflict: append entry
+
+        // No conflict append entries
+        if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex() + 1) {
+            System.out.printf("YOPI.\n");
+            logs.addAll(appendEntriesRequest.getEntries());
+            specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
+        }
+    }
+
+    private void handleAppendEntriesResponse(AppendEntriesResponse appendEntriesResponse) throws IOException {
+        System.out.printf("handleAppendEntriesResponse %s.\n", appendEntriesResponse);
+        // TODO implement
+        spec.commitChanges("HandleAppendEntriesResponse");
+        // Advance index
+        advanceCommitIndex();
     }
 
     private void rejectAppendEntries(String to) throws IOException {
         System.out.print("Reject append entries.\n");
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
+
         networkManagers.get(to).send(appendEntriesResponse);
     }
 

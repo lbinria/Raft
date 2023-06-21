@@ -274,6 +274,14 @@ IsHandleAppendEntriesRequest ==
         /\ m.mtype = AppendEntriesRequest
         /\ HandleAppendEntriesRequest(i, j, m)
 
+IsHandleAppendEntriesResponse ==
+    /\ IsEvent("HandleAppendEntriesResponse")
+    /\ \E m \in DOMAIN messages :
+        LET i == m.mdest
+        j == m.msource IN
+        /\ m.mtype = AppendEntriesResponse
+        /\ HandleAppendEntriesResponse(i, j, m)
+
 TraceNext ==
         \/ IsRestart
         \/ IsTimeout
@@ -286,6 +294,7 @@ TraceNext ==
         \/ IsAppendEntries
         \/ IsAdvanceCommitIndex
         \/ IsHandleAppendEntriesRequest
+        \/ IsHandleAppendEntriesResponse
 
 ComposedNext == TRUE
 
@@ -322,6 +331,7 @@ TraceAlias ==
             HandleRequestVoteRequest |-> ENABLED \E m \in DOMAIN messages : m.mtype = "RequestVoteRequest" /\ HandleRequestVoteRequest(m.mdest, m.msource, m),
             HandleRequestVoteResponse |-> ENABLED \E m \in DOMAIN messages : m.mtype = "RequestVoteResponse" /\ HandleRequestVoteResponse(m.mdest, m.msource, m),
             BecomeLeader |-> ENABLED \E i \in Server : BecomeLeader(i),
+            AdvanceCommitIndex |-> ENABLED \E i \in Server : AdvanceCommitIndex(i),
             Map |-> ENABLED MapVariables(Trace[TLCGet("level")])
         ]
     ]

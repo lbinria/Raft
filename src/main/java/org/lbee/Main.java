@@ -20,14 +20,18 @@ public class Main {
         // Get node name to initialize
         final String nodeName = args[0];
 
-        // Get info of requested node
-        final NodeInfo nodeInfo = Configuration.getClusterInfo().getNodes().get(nodeName);
-        // Init node
-        final Node node = new Node(nodeInfo, Configuration.getClusterInfo());
-
         // Write config
-        Configuration configuration = new Configuration(10, false);
-        ConfigurationWriter.write("raft.ndjson.conf", Map.of("Server", Configuration.getClusterInfo().getNodeNames(), "Value", configuration.getVals()));
+        final Configuration configuration = new Configuration(ConfigurationWriter.read("raft.ndjson.conf"));
+        System.out.println("Config: " + configuration);
+
+        // Some checks
+        if (!configuration.getClusterInfo().getNodes().containsKey(nodeName)) {
+            System.out.printf("Node name '%s' given as program parameter doesn't exist in configuration.\n", nodeName);
+            return;
+        }
+
+        // Init node
+        final Node node = new Node(nodeName, configuration);
 
         // Wait a bit for other nodes setup
         TimeUnit.SECONDS.sleep(2);

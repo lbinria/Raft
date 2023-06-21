@@ -32,4 +32,11 @@ public class ClusterInfo {
     public long getQuorum() {
         return (long)Math.ceil(nodes.size() / 2d);
     }
+
+    @Override
+    public String toString() {
+        return "ClusterInfo{" +
+                "nodes=" + nodes +
+                '}';
+    }
 }

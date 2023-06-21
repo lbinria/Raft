@@ -69,17 +69,20 @@ public class Node {
     private final VirtualField specMessages;
     private final VirtualField specLog;
 
-
     private boolean reduceSSflag;
-    public Node(NodeInfo nodeInfo, ClusterInfo clusterInfo) throws IOException {
+
+    public Node(String nodeName, Configuration configuration) throws IOException {
+        // Utils
+        this.configuration = configuration;
+        this.clusterInfo = configuration.getClusterInfo();
+        this.nodeInfo = clusterInfo.getNodes().get(nodeName);
 
         this.term = 1;
         this.state = NodeState.Follower;
         this.logs = new ArrayList<>();
         this.randTimeout = new Random(nodeInfo.seed());
         this.randEvent = new Random(6);
-        this.nodeInfo = nodeInfo;
-        this.clusterInfo = clusterInfo;
+
         this.networkManagers = new HashMap<>();
         this.network = new Network();
 
@@ -94,9 +97,6 @@ public class Node {
 
         electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
-
-        // why a new Configuration?
-        configuration = new Configuration(10, false);
 
         this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
         this.specState = spec.getVariable("state").getField(nodeInfo.name());

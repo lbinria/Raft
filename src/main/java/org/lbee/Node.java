@@ -102,6 +102,8 @@ public class Node {
         clock.reset();
         this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", clock);
 
+        this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
+        // can we have getVariable().getField().getField()....
         this.specState = spec.getVariable("state").getField(nodeInfo.name());
         this.specVotedFor = spec.getVariable("votedFor").getField(nodeInfo.name());
         this.specVotesResponded = spec.getVariable("votesResponded").getField(nodeInfo.name());

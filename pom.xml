@@ -51,8 +51,8 @@
                         <artifactId>instrumentation</artifactId>
                         <version>1.0</version>
                         <scope>system</scope>
-<!--                        <systemPath>${env.HOME}/.m2/repository/org/lbee/instrumentation/1.0/instrumentation-1.0.jar</systemPath>-->
-                        <systemPath>${basedir}/instrumentation-1.0.jar</systemPath>
+                       <systemPath>${env.HOME}/.m2/repository/org/lbee/instrumentation/1.0/instrumentation-1.0.jar</systemPath>
+                        <!-- <systemPath>${basedir}/instrumentation-1.0.jar</systemPath> -->
                     </dependency>
                 </dependencies>
             </plugin>

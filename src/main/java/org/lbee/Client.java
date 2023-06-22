@@ -13,7 +13,7 @@ public class Client {
 
         final ClusterInfo clusterInfo = Configuration.getClusterInfo();
 
-        final NodeInfo nodeInfo = clusterInfo.getNodeList().get(0);
+        final NodeInfo nodeInfo = clusterInfo.getNodes().get(0);
 
         Socket socket = new Socket(nodeInfo.hostname(), nodeInfo.port());
         System.out.printf("Client try connect to %s node at %s:%s.\n", nodeInfo.name(), nodeInfo.hostname(), nodeInfo.port());

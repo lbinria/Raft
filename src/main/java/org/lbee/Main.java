@@ -21,13 +21,13 @@ public class Main {
         final String nodeName = args[0];
 
         // Get info of requested node
-        final NodeInfo nodeInfo = Configuration.getClusterInfo().getNodes().get(nodeName);
+        final NodeInfo nodeInfo = Configuration.getClusterInfo().getNode(nodeName);
         // Init node
         final Node node = new Node(nodeInfo, Configuration.getClusterInfo());
 
         // Write config
         Configuration configuration = new Configuration(10, false);
-        ConfigurationWriter.write("raft.ndjson.conf", Map.of("Server", Configuration.getClusterInfo().getNodeNames(), "Value", configuration.getVals()));
+        ConfigurationWriter.write("raft.ndjson.conf", Map.of("Server", Configuration.getClusterInfo().getNodes().stream().map(NodeInfo::name).toList(), "Value", configuration.getVals()));
 
         // Wait a bit for other nodes setup
         TimeUnit.SECONDS.sleep(2);

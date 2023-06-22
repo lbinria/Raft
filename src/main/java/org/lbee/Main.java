@@ -25,7 +25,7 @@ public class Main {
         System.out.println("Config: " + configuration);
 
         // Some checks
-        if (!configuration.getClusterInfo().getNodes().containsKey(nodeName)) {
+        if (!configuration.getClusterInfo().getNodes().contains(nodeName)) {
             System.out.printf("Node name '%s' given as program parameter doesn't exist in configuration.\n", nodeName);
             return;
         }

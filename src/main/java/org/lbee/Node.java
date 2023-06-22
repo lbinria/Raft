@@ -77,20 +77,13 @@ public class Node {
         // Utils
         this.configuration = configuration;
         this.clusterInfo = configuration.getClusterInfo();
-        this.nodeInfo = clusterInfo.getNodes().get(nodeName);
+        this.nodeInfo = clusterInfo.getNode(nodeName);
 
         this.term = 1;
         this.state = NodeState.Follower;
         this.logs = new ArrayList<>();
         this.randTimeout = new Random(nodeInfo.seed());
         this.randEvent = new Random(6);
-<<<<<<< HEAD
-
-        this.networkManagers = new HashMap<>();
-=======
-        this.nodeInfo = nodeInfo;
-        this.clusterInfo = clusterInfo;
->>>>>>> 21e7dee (exploring)
         this.network = new Network();
 
         // Listen for connections
@@ -609,13 +602,8 @@ public class Node {
     private void rejectAppendEntries(String to) throws IOException {
         System.out.print("Reject append entries.\n");
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
-<<<<<<< HEAD
-
-        networkManagers.get(to).send(appendEntriesResponse);
-=======
         // networkManagers.get(to).send(appendEntriesResponse);
         network.send(to,appendEntriesResponse);
->>>>>>> 21e7dee (exploring)
     }
 
 

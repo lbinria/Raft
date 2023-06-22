@@ -1,25 +1,30 @@
 package org.lbee;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Random;
+
 import org.lbee.instrumentation.TraceInstrumentation;
 import org.lbee.instrumentation.VirtualField;
 import org.lbee.instrumentation.clock.SharedClock;
-import org.lbee.models.*;
-import org.lbee.models.messages.*;
-
-import java.io.IOException;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.*;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import org.lbee.models.CandidateState;
+import org.lbee.models.ClusterInfo;
+import org.lbee.models.Entry;
+import org.lbee.models.LeaderState;
+import org.lbee.models.NodeInfo;
+import org.lbee.models.NodeState;
+import org.lbee.models.messages.AppendEntriesRequest;
+import org.lbee.models.messages.AppendEntriesResponse;
+import org.lbee.models.messages.Message;
+import org.lbee.models.messages.RequestVoteRequest;
+import org.lbee.models.messages.RequestVoteResponse;
 
 public class Node {
-
     private long term;
     private int commitIndex;
     private long matchIndex;
-
 
     private long lastHeartbeat;
     private NodeState state;
@@ -28,18 +33,15 @@ public class Node {
     private CandidateState candidateState;
     private LeaderState leaderState;
 
-
     // Information about nodes cluster
     private final NodeInfo nodeInfo;
     private final ClusterInfo clusterInfo;
 
     private Configuration configuration;
 
-
     private final Random randTimeout;
     private final Random randEvent;
 
-    private final HashMap<String, NetworkManager> networkManagers;
     private final Network network;
     private final Server server;
 
@@ -82,14 +84,19 @@ public class Node {
         this.logs = new ArrayList<>();
         this.randTimeout = new Random(nodeInfo.seed());
         this.randEvent = new Random(6);
+<<<<<<< HEAD
 
         this.networkManagers = new HashMap<>();
+=======
+        this.nodeInfo = nodeInfo;
+        this.clusterInfo = clusterInfo;
+>>>>>>> 21e7dee (exploring)
         this.network = new Network();
 
         // Listen for connections
         this.server = new Server(nodeInfo.port());
-        this.server.start();
-        System.out.printf("Node %s is listening on port %s. Seed: %s.\n", nodeInfo.name(), nodeInfo.port(), nodeInfo.seed());
+        // this.server.start();
+        // System.out.printf("Node %s is listening on port %s. Seed: %s.\n", nodeInfo.name(), nodeInfo.port(), nodeInfo.seed());
 
         this.lastHeartbeat = System.currentTimeMillis();
 
@@ -101,6 +108,7 @@ public class Node {
         final SharedClock clock = SharedClock.get("raft.clock");
         clock.reset();
         this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", clock);
+
         this.specState = spec.getVariable("state").getField(nodeInfo.name());
         this.specVotedFor = spec.getVariable("votedFor").getField(nodeInfo.name());
         this.specVotesResponded = spec.getVariable("votesResponded").getField(nodeInfo.name());
@@ -117,6 +125,7 @@ public class Node {
 
     private void setState(NodeState state) {
         this.state = state;
+        // this.spec.notify(specState, SET, state.toString());
         this.specState.set(state.toString());
     }
 
@@ -128,6 +137,8 @@ public class Node {
     private void toLeader() {
         setState(NodeState.Leader);
         leaderState = new LeaderState(candidateState.getGranted());
+        // deja fait dans setState(state) ?
+        // pourquoi toCandidate() fait pas ca?
         specState.set(state.toString());
     }
 
@@ -137,25 +148,13 @@ public class Node {
     }
 
     public void start() {
-        for (final NodeInfo n : clusterInfo.getNodeList()) {
-            // Skip this
-            if (n.name().equals(nodeInfo.name()))
-                continue;
-                
-            // Try to connect to other nodes
-            // try {
-                // Socket socket = new Socket(n.hostname(), n.port());
-                // System.out.printf("Node %s try connect to %s node at %s:%s.\n", nodeInfo.name(), n.name(), n.hostname(), n.port());
-                // NetworkManager nm = new NetworkManager(socket);
-                // networkManagers.put(n.name(), nm);
-                network.addConnection(n.name(), n.hostname(), n.port());
-            // } catch (UnknownHostException ex) {
-            //     System.out.println("Server not found: " + ex.getMessage());
-            // } catch (IOException ex) {
-            //     System.out.println("HOST:" +n.hostname() +":"+ n.port());
-            //     System.out.println("I/O error: " + ex);
-            // }
-        }
+        // accept connections
+        this.server.start();
+        System.out.printf("Node %s is listening on port %s. Seed: %s.\n", nodeInfo.name(), nodeInfo.port(), nodeInfo.seed());
+        // connect to all other nodes
+        clusterInfo.getNodes().stream()
+            .filter(n -> !n.name().equals(nodeInfo.name()))
+            .forEach(n -> network.addConnection(n.name(), n.hostname(), n.port()));
     }
 
     private void restart() {
@@ -192,16 +191,14 @@ public class Node {
 
 
     public void run() throws IOException {
-
         long start = System.currentTimeMillis();
-
-
         // Prepare shutdown trigger
         final IntervalTrigger shutdownTrigger = new IntervalTrigger(() -> {
             try {
                 shutdown();
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                // throw new RuntimeException(e);
+                System.out.printf("Node %s couldn't shutdown.\n", nodeInfo.name());
             }
         }, 60000);
 
@@ -210,7 +207,8 @@ public class Node {
                 if (state == NodeState.Leader)
                     sendHeartbeat();
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                // throw new RuntimeException(e);
+                System.out.printf("Node %s couldn't heartbeat.\n", nodeInfo.name());
             }
         }, 500);
 
@@ -230,24 +228,26 @@ public class Node {
                     if (state == NodeState.Leader)
                         appendEntries();
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    // throw new RuntimeException(e);
+                   System.out.printf("Node %s couldn't append entries.\n", nodeInfo.name());
                 }
             }
         }, 1000);
 
         while (!shutdown) {
-
-            // Leader send heartbeat every 500ms
+            // Leader sends heartbeat every 500ms
             sendHeartbeatTrigger.run();
-            // Start new election if it doesn't receive heartbeat for some time
-            if (System.currentTimeMillis() >= lastHeartbeat + electionTimeout && (state == NodeState.Follower || state == NodeState.Candidate))
+            // Start new election if it hasn't received heartbeat for some time
+            if (System.currentTimeMillis() >= lastHeartbeat + electionTimeout 
+                    && (state == NodeState.Follower || state == NodeState.Candidate)){
                 timeout();
+            }
 
             takeMessage();
 
             // Simulate a client request to that node
             clientRequestTrigger.run();
-            // Append entries sometimes
+            // Append entries from time to time
             appendEntriesTrigger.run();
             // Restart node randomly
             restartTrigger.run();
@@ -345,7 +345,7 @@ public class Node {
     public void sendHeartbeat() throws IOException {
         assert state == NodeState.Leader : "Only leader can send heartbeat";
 
-        for (NodeInfo ni : clusterInfo.getNodeList()) {
+        for (NodeInfo ni : clusterInfo.getNodes()) {
             // Skip this
             if (nodeInfo.name().equals(ni.name()))
                 continue;
@@ -368,7 +368,7 @@ public class Node {
 
         System.out.println("Start sending vote requests.");
 
-        for (NodeInfo ni : clusterInfo.getNodeList()) {
+        for (NodeInfo ni : clusterInfo.getNodes()) {
 
             // Skip vote request for node that responded
             if (ni.name().equals(nodeInfo.name()) || candidateState.getResponded().contains(ni.name()))
@@ -436,7 +436,7 @@ public class Node {
         sendHeartbeat();
         System.out.printf("Node %s is Leader.\n", nodeInfo.name());
 
-        for (NodeInfo ni : clusterInfo.getNodeList()) {
+        for (NodeInfo ni : clusterInfo.getNodes()) {
             leaderState.getNextIndexes().put(ni.name(), logs.size());
             leaderState.getMatchIndexes().put(ni.name(), 0);
         }
@@ -463,7 +463,7 @@ public class Node {
     private void appendEntries() throws IOException {
         assert state == NodeState.Leader : "Only leader can send append entries requests.";
 
-        for (NodeInfo ni : clusterInfo.getNodeList()) {
+        for (NodeInfo ni : clusterInfo.getNodes()) {
             if (!ni.name().equals(nodeInfo.name()))
                 appendEntries(ni.name());
         }
@@ -609,17 +609,18 @@ public class Node {
     private void rejectAppendEntries(String to) throws IOException {
         System.out.print("Reject append entries.\n");
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
+<<<<<<< HEAD
 
         networkManagers.get(to).send(appendEntriesResponse);
+=======
+        // networkManagers.get(to).send(appendEntriesResponse);
+        network.send(to,appendEntriesResponse);
+>>>>>>> 21e7dee (exploring)
     }
 
 
 
     public void shutdown() throws IOException {
-        // Request shutdown
-        // for (NetworkManager nm : networkManagers.values()) {
-        //     nm.sendRaw("bye");
-        // }
         network.shutdown();
         shutdown = true;
     }

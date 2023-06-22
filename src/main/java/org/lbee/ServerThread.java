@@ -19,43 +19,31 @@ public class ServerThread extends Thread {
 
     public void run() {
         try {
-
             final InputStream input = socket.getInputStream();
             final BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-
             final OutputStream output = socket.getOutputStream();
             final PrintWriter writer = new PrintWriter(output, true);
-
             while (true) {
-
                 final String messageData = reader.readLine();
-
+                // do nothing if no message
                 if (messageData == null) {
-
                     continue;
                 }
-
-
-
-                // Quit loop and kill thread
+                // stop thread and close socket if message is "bye" 
                 if (messageData.equals("bye")) {
-                    System.out.println("Server receive bye.");
+                    System.out.println("Server received bye.");
                     writer.println("bye");
                     break;
                 }
-
                 // Create message object from data
                 JsonObject jsonObject = new Gson().fromJson(messageData, JsonObject.class);
                 Message message = Message.createMessage(jsonObject);
-
-                // Put message on queue
+                // and put message on queue
                 messageBox.put(message);
                 writer.println("ack");
             }
-
             System.out.println("A client quit.");
             socket.close();
-
         } catch (IOException ex) {
             System.out.println("Server exception: " + ex.getMessage());
             ex.printStackTrace();

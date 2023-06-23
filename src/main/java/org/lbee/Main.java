@@ -33,10 +33,12 @@ public class Main {
         // Init node
         final Node node = new Node(nodeName, configuration);
 
-        // Wait a bit for other nodes setup
-        TimeUnit.SECONDS.sleep(2);
-        // Connect to another nodes of cluster
+        // Initialize node and start node server
         node.start();
+        // Wait a bit for other nodes setup
+        TimeUnit.SECONDS.sleep(1);
+        // Connect to another nodes of cluster
+        node.connect();
         // Run node
         node.run();
     }

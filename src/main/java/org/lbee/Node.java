@@ -146,10 +146,14 @@ public class Node {
         // accept connections
         this.server.start();
         System.out.printf("Node %s is listening on port %s. Seed: %s.\n", nodeInfo.name(), nodeInfo.port(), nodeInfo.seed());
+
+    }
+
+    public void connect() {
         // connect to all other nodes
         clusterInfo.getNodes().stream()
-            .filter(n -> !n.name().equals(nodeInfo.name()))
-            .forEach(n -> network.addConnection(n.name(), n.hostname(), n.port()));
+                .filter(n -> !n.name().equals(nodeInfo.name()))
+                .forEach(n -> network.addConnection(n.name(), n.hostname(), n.port()));
     }
 
     private void restart() {

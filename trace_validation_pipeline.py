@@ -10,7 +10,7 @@ clean.clean()
 
 print("# Run.\n")
 
-run_impl.run_all(15.)
+run_impl.run_all(30.)
 
 print("# Merge trace with config.\n")
 

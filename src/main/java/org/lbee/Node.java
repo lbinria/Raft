@@ -181,11 +181,17 @@ public class Node {
             // Comment or uncomment line below doesn't change the size of state space
             // specNextIndex.init();
             // specMatchIndex.clear();
+
+            for (NodeInfo ni : clusterInfo.getNodeList()) {
+                leaderState.getNextIndexes().put(ni.name(), 1);
+                leaderState.getMatchIndexes().put(ni.name(), 0);
+            }
+
         }
 
         commitIndex = 0;
         // Comment or uncomment line below doesn't change the size of state space
-        //specCommitIndex.set(0);
+        //specCommitIndex.set(commitIndex);
 
         spec.commitChanges("Restart");
     }
@@ -328,6 +334,8 @@ public class Node {
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
             handleAppendEntriesResponse(appendEntriesResponse);
+            // Advance index
+            //advanceCommitIndex();
         }
 
 
@@ -359,7 +367,7 @@ public class Node {
 
 
     public void handleHeartbeat() {
-        System.out.printf("Node %s handle heartbeat.\n", nodeInfo.name());
+        //System.out.printf("Node %s handle heartbeat.\n", nodeInfo.name());
         lastHeartbeat = System.currentTimeMillis();
     }
 
@@ -437,7 +445,7 @@ public class Node {
         System.out.printf("Node %s is Leader.\n", nodeInfo.name());
 
         for (NodeInfo ni : clusterInfo.getNodeList()) {
-            leaderState.getNextIndexes().put(ni.name(), logs.size());
+            leaderState.getNextIndexes().put(ni.name(), logs.size() + 1);
             leaderState.getMatchIndexes().put(ni.name(), 0);
         }
 
@@ -479,23 +487,16 @@ public class Node {
 //        log[i][prevLogIndex].term
 //        ELSE
 //        0
-        long previousLogTerm = previousIndex >= 0 ? logs.get(previousIndex).getTerm() : 0;
+        long previousLogTerm = previousIndex > 0 ? logs.get(previousIndex - 1).getTerm() : 0;
 
-        // Note: -1
-        final int lastEntryIndex = Math.min(logs.size() - 1, nextIndex);
+        final int lastEntryIndex = Math.min(logs.size(), nextIndex);
 
-        // Note: +1 exclusive
-        final List<Entry> entries = logs.subList(nextIndex, lastEntryIndex + 1);
-        System.out.printf("Take entries [%s, %s]\n", nextIndex, lastEntryIndex);
+        final List<Entry> entries = logs.subList(nextIndex - 1, lastEntryIndex);
+        System.out.printf("Take entries [%s, %s]\n", nextIndex - 1, lastEntryIndex);
 
         int msgCommitIndex = Math.min(commitIndex, lastEntryIndex);
         final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, msgCommitIndex, 0);
-
-        // Note: Recompute some variable to log (because of index based is one in TLA+)
-        int msgCommitIndexLog = Math.min(commitIndex, lastEntryIndex + 1);
-        int previousIndexLog = previousIndex + 1;
-        final Message appendEntriesRequestLog = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndexLog, previousLogTerm, entries, msgCommitIndexLog, 0);
-        specMessages.apply("AddToBag", appendEntriesRequestLog);
+        specMessages.apply("AddToBag", appendEntriesRequest);
         System.out.println(appendEntriesRequest);
         spec.commitChanges("AppendEntries");
         // networkManagers.get(nodeName).send(appendEntriesRequest);
@@ -516,41 +517,49 @@ public class Node {
             }
         }
 
-        if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex).getTerm() == term)
+        if (maxAgreeIndex != -1)
+            System.out.printf("ALL AGREE.\n");
+
+        if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex).getTerm() == term) {
+            System.out.printf("SET NEW COMMIT INDEX %s.\n", maxAgreeIndex);
             commitIndex = maxAgreeIndex;
+        }
 
         // +1 for base-1 indexing in spec
-        specCommitIndex.set(commitIndex + 1);
+        specCommitIndex.set(commitIndex);
         spec.commitChanges("AdvanceCommitIndex");
     }
 
     private void handleAppendEntriesRequest(AppendEntriesRequest appendEntriesRequest) throws IOException {
-//        LET logOk == \/ m.mprevLogIndex = 0
-//                 \/ /\ m.mprevLogIndex > 0
-//                /\ m.mprevLogIndex <= Len(log[i])
-//                /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
 
         System.out.printf("handleAppendEntriesRequest %s.\n", appendEntriesRequest);
 
         long previousLogIndex = appendEntriesRequest.getLastLogIndex();
-
-        boolean logOk = previousLogIndex == -1 ||
-                (previousLogIndex >= 0
-                        &&  previousLogIndex < logs.size()
-                        && appendEntriesRequest.getLastLogTerm() == logs.get((int)previousLogIndex).getTerm());
+//        LET logOk == \/ m.mprevLogIndex = 0
+//                 \/ /\ m.mprevLogIndex > 0
+//                /\ m.mprevLogIndex <= Len(log[i])
+//                /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
+        boolean logOk = previousLogIndex == 0 ||
+                (previousLogIndex > 0
+                        &&  previousLogIndex <= logs.size()
+                        && appendEntriesRequest.getLastLogTerm() == logs.get((int)previousLogIndex - 1).getTerm());
 
         // Return to follower state
         if (state == NodeState.Candidate) {
             if (appendEntriesRequest.getTerm() == term)
                 toFollower();
+            spec.commitChanges("HandleAppendEntriesRequest");
         }
         else if (state == NodeState.Follower) {
             if (appendEntriesRequest.getTerm() == term && logOk)
                 acceptAppendEntries(appendEntriesRequest);
             else
-                rejectAppendEntries(appendEntriesRequest.getFrom());
+                rejectAppendEntries(appendEntriesRequest);
         }
-        spec.commitChanges("HandleAppendEntriesRequest");
+
+        System.out.printf("--- NODE %s ENTRIES %s.\n", nodeInfo.name(), logs);
+
+        //spec.commitChanges("HandleAppendEntriesRequest");
     }
 
     private void acceptAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -562,7 +571,9 @@ public class Node {
         //\/ /\ m.mentries /= << >>
         ///\ Len(log[i]) >= index
         ///\ log[i][index].term = m.mentries[1].term
-        if (appendEntriesRequest.getEntries().isEmpty() || (logs.size() > index && logs.get(index).getTerm() == appendEntriesRequest.getEntries().get(0).getTerm())) {
+        if (appendEntriesRequest.getEntries().isEmpty() || (logs.size() >= index && logs.get(index - 1).getTerm() == appendEntriesRequest.getEntries().get(0).getTerm())) {
+            System.out.print("Already done.\n");
+
 //          /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
             commitIndex = appendEntriesRequest.getCommitIndex();
             specCommitIndex.set(commitIndex);
@@ -575,7 +586,11 @@ public class Node {
 //            mdest           |-> j],
 //            m)
             int matchIndex = (int)appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size();
+
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
+            specMessages.apply("AddToBag", appendEntriesResponse);
+            specMessages.apply("RemoveFromBag", appendEntriesRequest);
+            spec.commitChanges("HandleAppendEntriesRequest");
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
 
@@ -589,28 +604,65 @@ public class Node {
 //        IN log' = [log EXCEPT ![i] = new]
 //        /\ UNCHANGED <<serverVars, commitIndex, messages>>
 //        \/ \* no conflict: append entry
+        if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() >= index && logs.get(index - 1).getTerm() != appendEntriesRequest.getEntries().get(0).getTerm()) {
+            System.out.print("Conflict.\n");
+            logs.remove(logs.size() - 1);
+            //specLog.apply("RemoveElementAt", logs.size() - 1);
+            spec.commitChanges("HandleAppendEntriesRequest");
+        }
 
         // No conflict append entries
-        if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex() + 1) {
-            System.out.printf("YOPI.\n");
+        if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
+            System.out.print("No conflict.\n");
             logs.addAll(appendEntriesRequest.getEntries());
             specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
+            spec.commitChanges("HandleAppendEntriesRequest");
         }
     }
 
     private void handleAppendEntriesResponse(AppendEntriesResponse appendEntriesResponse) throws IOException {
         System.out.printf("handleAppendEntriesResponse %s.\n", appendEntriesResponse);
-        // TODO implement
+
+//        /\ m.mterm = currentTerm[i]
+//        /\ \/ /\ m.msuccess \* successful
+//        /\ nextIndex'  = [nextIndex  EXCEPT ![i][j] = m.mmatchIndex + 1]
+//        /\ matchIndex' = [matchIndex EXCEPT ![i][j] = m.mmatchIndex]
+//        \/ /\ \lnot m.msuccess \* not successful
+//        /\ nextIndex' = [nextIndex EXCEPT ![i][j] =
+//        Max({nextIndex[i][j] - 1, 1})]
+//        /\ UNCHANGED <<matchIndex>>
+//        /\ Discard(m)
+        // TODO trace here maybe an error that make side effects on other events
+
+
+        if (appendEntriesResponse.getTerm() != term)
+            return;
+
+        String fromNodeName = appendEntriesResponse.getFrom();
+        if (appendEntriesResponse.isSuccess()) {
+            int matchIndex = (int)appendEntriesResponse.getMatchIndex();
+            int nextIndex = matchIndex + 1;
+            leaderState.getNextIndexes().put(fromNodeName, nextIndex);
+            leaderState.getMatchIndexes().put(fromNodeName, matchIndex);
+//            specNextIndex.getField(fromNodeName).set(nextIndex);
+            specMatchIndex.getField(fromNodeName).set(matchIndex);
+        } else {
+            int nextIndex = leaderState.getNextIndexes().get(fromNodeName);
+            leaderState.getNextIndexes().put(fromNodeName, Math.max(nextIndex - 1, 1));
+        }
+
         spec.commitChanges("HandleAppendEntriesResponse");
-        // Advance index
-        advanceCommitIndex();
+
     }
 
-    private void rejectAppendEntries(String to) throws IOException {
+    private void rejectAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
         System.out.print("Reject append entries.\n");
+        String to = appendEntriesRequest.getFrom();
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
-
-        networkManagers.get(to).send(appendEntriesResponse);
+        specMessages.apply("AddToBag", appendEntriesResponse);
+        specMessages.apply("RemoveFromBag", appendEntriesRequest);
+        spec.commitChanges("HandleAppendEntriesRequest");
+        network.send(to, appendEntriesResponse);
     }
 
 

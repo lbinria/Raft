@@ -48,4 +48,12 @@ public class AppendEntriesResponse extends Message implements TLASerializer {
         jsonObject.addProperty("mmatchIndex", matchIndex);
         return jsonObject;
     }
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public long getMatchIndex() {
+        return matchIndex;
+    }
 }

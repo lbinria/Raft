@@ -10,7 +10,7 @@ java_bin = os.path.join(java_home, "java")
 
 def run(nodeName):
     p = Popen([
-        java_bin,
+        "java",
         "-jar",
         "target/Raft-1.0-SNAPSHOT-jar-with-dependencies.jar",
         nodeName

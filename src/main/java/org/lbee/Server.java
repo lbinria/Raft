@@ -17,13 +17,12 @@ public class Server extends Thread {
     public void run() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             while (true) {
-                //System.out.printf("Waiting for node connection.\n");
+                System.out.printf("Waiting for node connection on port %s\n", port);
                 // Accept connection from another node
                 final Socket socket = serverSocket.accept();
-                System.out.println("Accept node connection request.");
+                System.out.printf("Accept node connection request on port %s\n", port);
                 new ServerThread(socket, messageBox).start();
             } 
-
         } catch (IOException ex) {
             System.out.println("Server exception: " + ex.getMessage());
             ex.printStackTrace();

@@ -36,9 +36,7 @@ AddElement(cur, val) == cur \cup {val}
 AddElements(cur, vals) == cur \cup ToSet(vals)
 RemoveElement(cur, val) == cur \ {val}
 Clear(cur, val) == {}
-
 AppendElement(cur, val) == Append(cur, val)
-\*RemoveKey(cur, val) == Nil
 RemoveKey(cur, val) == [k \in DOMAIN cur |-> IF k = val THEN Nil ELSE cur[k]]
 UpdateRec(cur, val) == [k \in DOMAIN cur |-> IF k \in DOMAIN val THEN val[k] ELSE cur[k]]
 AddToBag(cur, val) ==
@@ -54,11 +52,6 @@ RemoveFromBag(cur, val) ==
         cur
 
 Add(cur, val) == cur + val
-
-\*currentTerm, state, votedFor
-\*votesResponded, votesGranted
-\*nextIndex, matchIndex
-\*messages, log, commitIndex
 
 (* Can be extracted from init *)
 Default(varName) ==
@@ -96,8 +89,8 @@ LOCAL ExceptAtPath(var, default, path, op, args) ==
     ELSE
         [var EXCEPT ![h] = Apply(@, default[h], op, args)]
 
-RECURSIVE ExceptAtPaths(_,_,_)
-LOCAL ExceptAtPaths(var, varName, updates) ==
+RECURSIVE ApplyUpdates(_,_,_)
+LOCAL ApplyUpdates(var, varName, updates) ==
     LET update == Head(updates) IN
 
     LET applied ==
@@ -107,15 +100,11 @@ LOCAL ExceptAtPaths(var, varName, updates) ==
             Apply(var, Default(varName), update.op, update.args)
     IN
     IF Len(updates) > 1 THEN
-        ExceptAtPaths(applied, varName, Tail(updates))
+        ApplyUpdates(applied, varName, Tail(updates))
     ELSE
         applied
 
-RA == INSTANCE raft
-
 TraceInit ==
-    \* The implementation's initial state is deterministic and known.
-    \* TLCGet("level") = 1 => /\ KV!Init
     /\ l = 1
     /\ Init
 
@@ -125,58 +114,51 @@ logline ==
 MapVariables(t) ==
     /\
         IF "currentTerm" \in DOMAIN t
-        THEN currentTerm' = ExceptAtPaths(currentTerm, "currentTerm", t.currentTerm)
+        THEN currentTerm' = ApplyUpdates(currentTerm, "currentTerm", t.currentTerm)
         ELSE TRUE
     /\
         IF "state" \in DOMAIN t
-        THEN state' = ExceptAtPaths(state, "state", t.state)
+        THEN state' = ApplyUpdates(state, "state", t.state)
         ELSE TRUE
     /\
         IF "votedFor" \in DOMAIN t
-        THEN votedFor' = ExceptAtPaths(votedFor, "votedFor", t.votedFor)
+        THEN votedFor' = ApplyUpdates(votedFor, "votedFor", t.votedFor)
         ELSE TRUE
     /\
         IF "votesResponded" \in DOMAIN t
-        THEN votesResponded' = ExceptAtPaths(votesResponded, "votesResponded", t.votesResponded)
+        THEN votesResponded' = ApplyUpdates(votesResponded, "votesResponded", t.votesResponded)
         ELSE TRUE
     /\
         IF "votesGranted" \in DOMAIN t
-        THEN votesGranted' = ExceptAtPaths(votesGranted, "votesGranted", t.votesGranted)
+        THEN votesGranted' = ApplyUpdates(votesGranted, "votesGranted", t.votesGranted)
         ELSE TRUE
     /\
         IF "nextIndex" \in DOMAIN t
-        THEN nextIndex' = ExceptAtPaths(nextIndex, "nextIndex", t.nextIndex)
+        THEN nextIndex' = ApplyUpdates(nextIndex, "nextIndex", t.nextIndex)
         ELSE TRUE
     /\
         IF "matchIndex" \in DOMAIN t
-        THEN matchIndex' = ExceptAtPaths(matchIndex, "matchIndex", t.matchIndex)
+        THEN matchIndex' = ApplyUpdates(matchIndex, "matchIndex", t.matchIndex)
         ELSE TRUE
     /\
         IF "messages" \in DOMAIN t
-        THEN messages' = ExceptAtPaths(messages, "messages", t.messages)
+        THEN messages' = ApplyUpdates(messages, "messages", t.messages)
         ELSE TRUE
     /\
         IF "log" \in DOMAIN t
-        THEN log' = ExceptAtPaths(log, "log", t.log)
+        THEN log' = ApplyUpdates(log, "log", t.log)
         ELSE TRUE
     /\
         IF "commitIndex" \in DOMAIN t
-        THEN commitIndex' = ExceptAtPaths(commitIndex, "commitIndex", t.commitIndex)
+        THEN commitIndex' = ApplyUpdates(commitIndex, "commitIndex", t.commitIndex)
         ELSE TRUE
-
-TraceNextConstraint ==
-    LET i == TLCGet("level")
-    IN
-        /\ i <= Len(Trace)
-        /\ MapVariables(Trace[i])
-
 
 IsEvent(e) ==
     \* Equals FALSE if we get past the end of the log, causing model checking to stop.
     /\ l \in 1..Len(Trace)
     /\ IF "desc" \in DOMAIN logline THEN logline.desc = e ELSE TRUE
     /\ l' = l + 1
-    /\ MapVariables(Trace[l])
+    /\ MapVariables(logline)
 \*    /\ Next
     /\ allLogs' = allLogs \cup {log[i] : i \in Server}
 
@@ -319,7 +301,7 @@ TraceView ==
      \* appears the second time in the trace.  Put differently,  TraceView  causes TLC to
      \* consider  s_i  and s_j  , where  i  and  j  are the positions of  s  in the trace,
      \* to be different states.
-    <<vars, TLCGet("level")>>
+    <<vars, l>>
 
 TraceAlias ==
     [

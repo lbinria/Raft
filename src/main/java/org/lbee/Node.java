@@ -1,10 +1,10 @@
 package org.lbee;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.lbee.instrumentation.TraceInstrumentation;
 import org.lbee.instrumentation.VirtualField;
@@ -83,7 +83,7 @@ public class Node {
         this.state = NodeState.Follower;
         this.logs = new ArrayList<>();
         this.randTimeout = new Random(nodeInfo.seed());
-        this.randEvent = new Random(6);
+        this.randEvent = new Random(nodeInfo.seed() + 1423);
         this.network = new Network();
 
         // Listen for connections
@@ -95,6 +95,9 @@ public class Node {
 
         this.shutdown = false;
 
+        //leaderState = new LeaderState(/*quorum*/);
+
+
         electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
 
@@ -103,7 +106,7 @@ public class Node {
         this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", clock);
 
         this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
-        // can we have getVariable().getField().getField()....
+
         this.specState = spec.getVariable("state").getField(nodeInfo.name());
         this.specVotedFor = spec.getVariable("votedFor").getField(nodeInfo.name());
         this.specVotesResponded = spec.getVariable("votesResponded").getField(nodeInfo.name());
@@ -131,15 +134,13 @@ public class Node {
 
     private void toLeader() {
         setState(NodeState.Leader);
-        leaderState = new LeaderState(candidateState.getGranted());
-        // deja fait dans setState(state) ?
-        // pourquoi toCandidate() fait pas ca?
-        specState.set(state.toString());
+//        final Set<String> quorum = new HashSet<>(candidateState.getGranted());
+        if (leaderState == null)
+            leaderState = new LeaderState();
     }
 
     private void toFollower() {
         setState(NodeState.Follower);
-        specState.set(state.toString());
     }
 
     public void start() {
@@ -156,7 +157,7 @@ public class Node {
                 .forEach(n -> network.addConnection(n.name(), n.hostname(), n.port()));
     }
 
-    private void restart() {
+    private void restart() throws InterruptedException {
         System.out.printf("Node %s restarted.\n", nodeInfo.name());
 //    /\ state'          = [state EXCEPT ![i] = Follower]
 //                /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]
@@ -171,14 +172,14 @@ public class Node {
             candidateState.clear();
             // Notify spec
             // Comment or uncomment line below doesn't change the size of state space
-            // specVotesResponded.clear();
-            // specVotesGranted.clear();
+             specVotesResponded.clear();
+             specVotesGranted.clear();
         }
         else if (leaderState != null) {
             leaderState.clear();
             // Comment or uncomment line below doesn't change the size of state space
-            // specNextIndex.init();
-            // specMatchIndex.clear();
+             specNextIndex.init();
+             specMatchIndex.clear();
 
             for (NodeInfo ni : clusterInfo.getNodes()) {
                 leaderState.getNextIndexes().put(ni.name(), 1);
@@ -189,7 +190,7 @@ public class Node {
 
         commitIndex = 0;
         // Comment or uncomment line below doesn't change the size of state space
-        //specCommitIndex.set(commitIndex);
+        specCommitIndex.set(commitIndex);
 
         spec.commitChanges("Restart");
     }
@@ -218,8 +219,13 @@ public class Node {
         }, 500);
 
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 10) == 0)
-                restart();
+            if (randEvent.nextInt(0, 8) == 0) {
+                try {
+                    restart();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }, 1000);
 
         final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
@@ -228,7 +234,7 @@ public class Node {
         }, 1000);
 
         final IntervalTrigger appendEntriesTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 5) == 0) {
+            //if (randEvent.nextInt(0, 5) == 0) {
                 try {
                     if (state == NodeState.Leader)
                         appendEntries();
@@ -236,8 +242,12 @@ public class Node {
                     // throw new RuntimeException(e);
                    System.out.printf("Node %s couldn't append entries.\n", nodeInfo.name());
                 }
-            }
+            //}
         }, 1000);
+
+        final IntervalTrigger displayLogTrigger = new IntervalTrigger(() -> {
+            System.out.printf("LOG: %s.\n", logs.stream().map(Entry::getContent).collect(Collectors.toList()));
+        }, 3000);
 
         while (!shutdown) {
             // Leader sends heartbeat every 500ms
@@ -250,6 +260,7 @@ public class Node {
 
             takeMessage();
 
+            displayLogTrigger.run();
             // Simulate a client request to that node
             clientRequestTrigger.run();
             // Append entries from time to time
@@ -257,7 +268,7 @@ public class Node {
             // Restart node randomly
             restartTrigger.run();
             // Shutdown at some point
-            shutdownTrigger.run();
+            //shutdownTrigger.run();
         }
 
     }
@@ -333,8 +344,6 @@ public class Node {
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
             handleAppendEntriesResponse(appendEntriesResponse);
-            // Advance index
-            //advanceCommitIndex();
         }
 
 
@@ -358,7 +367,6 @@ public class Node {
                 continue;
 
             final Message heartbeatMessage = new AppendEntriesRequest(nodeInfo.name(), ni.name(), term, 0, 0, new ArrayList<>(), commitIndex, 0);
-            // networkManagers.get(ni.name()).send(heartbeatMessage);
             network.send(ni.name(),heartbeatMessage);
         }
     }
@@ -366,7 +374,7 @@ public class Node {
 
 
     public void handleHeartbeat() {
-        //System.out.printf("Node %s handle heartbeat.\n", nodeInfo.name());
+        System.out.printf("Node %s handle heartbeat.\n", nodeInfo.name());
         lastHeartbeat = System.currentTimeMillis();
     }
 
@@ -427,7 +435,8 @@ public class Node {
 
         spec.commitChanges("HandleRequestVoteResponse");
 
-        if (state == NodeState.Candidate && candidateState.getGranted().size() >= clusterInfo.getQuorum())
+        // Note: BUG
+        if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum())
             becomeLeader();
     }
 
@@ -435,7 +444,7 @@ public class Node {
     public void becomeLeader() throws IOException {
         // Note: weird ! assertion doesn't trigger when node is leader, it seems like it doesn't check == Candidate
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
-        assert candidateState.getGranted().size() >= clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
+        assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
         // Note: bug found with trace validation at 57th depth
 //        assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
 
@@ -446,6 +455,8 @@ public class Node {
         for (NodeInfo ni : clusterInfo.getNodes()) {
             leaderState.getNextIndexes().put(ni.name(), logs.size() + 1);
             leaderState.getMatchIndexes().put(ni.name(), 0);
+            specNextIndex.getField(ni.name()).set(logs.size() + 1);
+            specMatchIndex.getField(ni.name()).set(0);
         }
 
         spec.commitChanges("BecomeLeader");
@@ -504,27 +515,28 @@ public class Node {
 
     private void advanceCommitIndex() {
 
+        if (state != NodeState.Leader)
+            return;
+
         int maxAgreeIndex = -1;
         for (int i = logs.size(); i > 0; i--) {
             int finalI = i;
-            boolean allAgree = leaderState.getQuorum().stream().allMatch(nodeName -> leaderState.getMatchIndexes().get(nodeName) >= finalI);
 
-            if (allAgree)
+            long nbAgree = clusterInfo.getNodes().stream().filter(nodeInfo -> !nodeInfo.name().equals(this.nodeInfo.name()) && leaderState.getMatchIndexes().get(nodeInfo.name()) >= finalI).count() + 1;
+
+            // Note: BUG
+            if (nbAgree > clusterInfo.getQuorum())
             {
                 maxAgreeIndex = i;
                 break;
             }
         }
 
-        if (maxAgreeIndex != -1)
-            System.out.printf("ALL AGREE.\n");
-
-        if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex).getTerm() == term) {
+        if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex - 1).getTerm() == term) {
             System.out.printf("SET NEW COMMIT INDEX %s.\n", maxAgreeIndex);
             commitIndex = maxAgreeIndex;
         }
 
-        // +1 for base-1 indexing in spec
         specCommitIndex.set(commitIndex);
         spec.commitChanges("AdvanceCommitIndex");
     }
@@ -642,7 +654,7 @@ public class Node {
             int nextIndex = matchIndex + 1;
             leaderState.getNextIndexes().put(fromNodeName, nextIndex);
             leaderState.getMatchIndexes().put(fromNodeName, matchIndex);
-//            specNextIndex.getField(fromNodeName).set(nextIndex);
+            specNextIndex.getField(fromNodeName).set(nextIndex);
             specMatchIndex.getField(fromNodeName).set(matchIndex);
         } else {
             int nextIndex = leaderState.getNextIndexes().get(fromNodeName);
@@ -650,6 +662,9 @@ public class Node {
         }
 
         spec.commitChanges("HandleAppendEntriesResponse");
+
+        // Advance index
+        advanceCommitIndex();
 
     }
 

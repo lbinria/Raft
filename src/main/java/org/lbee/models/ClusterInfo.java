@@ -26,7 +26,7 @@ public class ClusterInfo {
     }
 
     public long getQuorum() {
-        return (long)Math.ceil(nodes.size() / 2d);
+        return nodes.size() / 2;
     }
 
     @Override

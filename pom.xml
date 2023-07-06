@@ -14,12 +14,21 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lbee</groupId>
+            <artifactId>instrumentation</artifactId>
+            <version>1.0</version>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.3.0</version>
+                <version>3.6.0</version>
                 <configuration>
                     <!-- get all project dependencies -->
                     <descriptorRefs>
@@ -45,26 +54,29 @@
                         </goals>
                     </execution>
                 </executions>
+
                 <dependencies>
-                    <dependency>
-                        <groupId>org.lbee</groupId>
-                        <artifactId>instrumentation</artifactId>
-                        <version>1.0</version>
-                        <scope>system</scope>
-                       <systemPath>${env.HOME}/.m2/repository/org/lbee/instrumentation/1.0/instrumentation-1.0.jar</systemPath>
-                        <!-- <systemPath>${basedir}/instrumentation-1.0.jar</systemPath> -->
-                    </dependency>
+<!--                    <dependency>-->
+<!--                        <groupId>org.lbee</groupId>-->
+<!--                        <artifactId>instrumentation</artifactId>-->
+<!--                        <version>1.0</version>-->
+<!--                        <scope>system</scope>-->
+<!--                       <systemPath>${env.HOME}/.m2/repository/org/lbee/instrumentation/1.0/instrumentation-1.0.jar</systemPath>-->
+<!--                        &lt;!&ndash; <systemPath>${basedir}/instrumentation-1.0.jar</systemPath> &ndash;&gt;-->
+<!--                    </dependency>-->
                 </dependencies>
+
+
             </plugin>
         </plugins>
     </build>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.lbee</groupId>
-            <artifactId>instrumentation</artifactId>
-            <version>1.0</version>
-        </dependency>
-    </dependencies>
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub lbinria Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/lbinria/Raft</url>
+        </repository>
+    </distributionManagement>
 
 </project>

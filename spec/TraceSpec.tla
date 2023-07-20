@@ -14,7 +14,6 @@ BaseInit == Print(<<"Trace spec isn't valid, you should override 'BaseInit'.">>,
 TraceNext == Print(<<"Trace spec isn't valid, you should override 'TraceNext'.">>, Nil)
 MapVariables(logline) == Print(<<"Trace spec isn't valid, you should override 'MapVariables'.">>, Nil)
 \*ASSUME Vars /= <<>>
-\*ASSUME BaseInit # Nil
 \*ASSUME TraceNext # Nil
 
 (* Read trace *)
@@ -23,6 +22,9 @@ JsonTrace ==
         ndJsonDeserialize(IOEnv.TRACE_PATH)
     ELSE
         Print(<<"Failed to validate the trace. TRACE_PATH environnement variable was expected.">>, "")
+
+(* Manage exceptions: assume that trace is free of any exception *)
+ASSUME \A t \in ToSet(JsonTrace) : "__exception" \notin DOMAIN t
 
 (* Get trace skipping config line *)
 Trace ==

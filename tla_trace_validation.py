@@ -5,9 +5,6 @@ from subprocess import Popen
 import sys
 
 # Get paths
-java_home = os.environ["JAVA_HOME"]
-assert java_home != None, "JAVA_HOME variable is not set."
-java_bin = os.path.join(java_home, "java")
 tla_dir = "/opt/TLAToolbox-1.8.0-nightly/toolbox"
 
 tla_jar = os.path.join(tla_dir, "tla2tools.jar")
@@ -23,7 +20,7 @@ if len(sys.argv) > 2:
 
 # Run TLA
 tla_trace_validation_process = Popen([
-    java_bin,
+    "java",
     "-XX:+UseParallelGC",
     "-cp",
     tla_cp,

@@ -435,9 +435,8 @@ public class Node {
 
         spec.commitChanges("HandleRequestVoteResponse");
 
-        // Note: Reintroduces a previously encountered bug
-//        if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum())
-        if (state == NodeState.Candidate && candidateState.getGranted().size() >= clusterInfo.getQuorum())
+        // Note: BUG
+        if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum())
             becomeLeader();
     }
 
@@ -446,6 +445,8 @@ public class Node {
         // Note: weird ! assertion doesn't trigger when node is leader, it seems like it doesn't check == Candidate
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
         assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
+        // Note: bug found with trace validation at 57th depth
+//        assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
 
         toLeader();
         sendHeartbeat();
@@ -523,8 +524,7 @@ public class Node {
 
             long nbAgree = clusterInfo.getNodes().stream().filter(nodeInfo -> !nodeInfo.name().equals(this.nodeInfo.name()) && leaderState.getMatchIndexes().get(nodeInfo.name()) >= finalI).count() + 1;
 
-            // Note: You can introduce a bug by swapping commented and uncommented line (it was a previously encountered bug)
-//            if (nbAgree >= clusterInfo.getQuorum())
+            // Note: BUG
             if (nbAgree > clusterInfo.getQuorum())
             {
                 maxAgreeIndex = i;

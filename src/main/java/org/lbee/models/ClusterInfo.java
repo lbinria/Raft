@@ -26,8 +26,6 @@ public class ClusterInfo {
     }
 
     public long getQuorum() {
-        // Note: You can introduce a bug by swapping commented and uncommented line (it was a previously encountered bug)
-//        return (long)Math.ceil(nodes.size() / 2d);
         return nodes.size() / 2;
     }
 

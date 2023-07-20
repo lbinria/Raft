@@ -34,43 +34,43 @@ RADefault(varName) ==
 RAMapVariables(t) ==
     /\
         IF "currentTerm" \in DOMAIN t
-        THEN currentTerm' = ApplyUpdates(currentTerm, "currentTerm", t.currentTerm)
+        THEN currentTerm' = MapVariable(currentTerm, "currentTerm", t)
         ELSE TRUE
     /\
         IF "state" \in DOMAIN t
-        THEN state' = ApplyUpdates(state, "state", t.state)
+        THEN state' = MapVariable(state, "state", t)
         ELSE TRUE
     /\
         IF "votedFor" \in DOMAIN t
-        THEN votedFor' = ApplyUpdates(votedFor, "votedFor", t.votedFor)
+        THEN votedFor' = MapVariable(votedFor, "votedFor", t)
         ELSE TRUE
     /\
         IF "votesResponded" \in DOMAIN t
-        THEN votesResponded' = ApplyUpdates(votesResponded, "votesResponded", t.votesResponded)
+        THEN votesResponded' = MapVariable(votesResponded, "votesResponded", t)
         ELSE TRUE
     /\
         IF "votesGranted" \in DOMAIN t
-        THEN votesGranted' = ApplyUpdates(votesGranted, "votesGranted", t.votesGranted)
+        THEN votesGranted' = MapVariable(votesGranted, "votesGranted", t)
         ELSE TRUE
     /\
         IF "nextIndex" \in DOMAIN t
-        THEN nextIndex' = ApplyUpdates(nextIndex, "nextIndex", t.nextIndex)
+        THEN nextIndex' = MapVariable(nextIndex, "nextIndex", t)
         ELSE TRUE
     /\
         IF "matchIndex" \in DOMAIN t
-        THEN matchIndex' = ApplyUpdates(matchIndex, "matchIndex", t.matchIndex)
+        THEN matchIndex' = MapVariable(matchIndex, "matchIndex", t)
         ELSE TRUE
     /\
         IF "messages" \in DOMAIN t
-        THEN messages' = ApplyUpdates(messages, "messages", t.messages)
+        THEN messages' = MapVariable(messages, "messages", t)
         ELSE TRUE
     /\
         IF "log" \in DOMAIN t
-        THEN log' = ApplyUpdates(log, "log", t.log)
+        THEN log' = MapVariable(log, "log", t)
         ELSE TRUE
     /\
         IF "commitIndex" \in DOMAIN t
-        THEN commitIndex' = ApplyUpdates(commitIndex, "commitIndex", t.commitIndex)
+        THEN commitIndex' = MapVariable(commitIndex, "commitIndex", t)
         ELSE TRUE
 
 

@@ -3,16 +3,11 @@ from subprocess import Popen, PIPE, TimeoutExpired
 import ndjson
 import clean
 
-# Get paths
-java_home = os.environ["JAVA_HOME"]
-assert java_home != None, "JAVA_HOME variable is not set."
-java_bin = os.path.join(java_home, "java")
-
 def run(nodeName):
     p = Popen([
         "java",
         "-jar",
-        "target/Raft-1.0-SNAPSHOT-jar-with-dependencies.jar",
+        "target/Raft-1.1-jar-with-dependencies.jar",
         nodeName
         ])
     return p

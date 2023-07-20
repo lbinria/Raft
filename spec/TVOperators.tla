@@ -7,6 +7,8 @@ EXTENDS TLC, Sequences, SequencesExt, Naturals, FiniteSets, Bags, Json, IOUtils
 CONSTANT Nil
 (* Operators to override *)
 Default(varName) ==  Print(<<"Trace spec isn't valid, you should override 'Default' operator.">>, Nil)
+MapArgs(cur, default, op, args, eventName) == Print(<<"Trace spec isn't valid, you should override 'MapArgs' operator.">>, Nil)
+MapArgsBase(cur, default, op, args, eventName) == args
 
 (* Generic operators *)
 Replace(cur, val) == val
@@ -30,6 +32,10 @@ RemoveFromBag(cur, val) ==
         cur
 
 Add(cur, val) == cur + val
+Sub(cur, val) == cur - val
+
+Unchanged(cur, val) == cur
+
 
 Apply(var, default, op, args) ==
     CASE op = "Replace" -> Replace(var, args[1])
@@ -39,12 +45,14 @@ Apply(var, default, op, args) ==
     []   op = "AddToBag" -> AddToBag(var, args[1])
     []   op = "RemoveFromBag" -> RemoveFromBag(var, args[1])
     []   op = "Add" -> Add(var, args[1])
+    []   op = "Sub" -> Sub(var, args[1])
     []   op = "Clear" -> Clear(var, <<>>)
     []   op = "AppendElement" -> AppendElement(var, args[1])
     []   op = "RemoveKey" -> RemoveKey(var, args[1])
     []   op = "UpdateRec" -> UpdateRec(var, args[1])
     []   op = "Init" -> Replace(var, default)
     []   op = "InitWithValue" -> UpdateRec(default, args[1])
+    []   op = "Unchanged" -> Unchanged(var, args[1])
 
 RECURSIVE ExceptAtPath(_,_,_,_,_)
 LOCAL ExceptAtPath(var, default, path, op, args) ==
@@ -54,19 +62,28 @@ LOCAL ExceptAtPath(var, default, path, op, args) ==
     ELSE
         [var EXCEPT ![h] = Apply(@, default[h], op, args)]
 
-RECURSIVE ApplyUpdates(_,_,_)
-LOCAL ApplyUpdates(var, varName, updates) ==
+RECURSIVE ApplyUpdates(_,_,_,_)
+LOCAL ApplyUpdates(var, varName, updates, event) ==
     LET update == Head(updates) IN
 
     LET applied ==
         IF Len(update.path) > 0 THEN
             ExceptAtPath(var, Default(varName), update.path, update.op, update.args)
         ELSE
-            Apply(var, Default(varName), update.op, update.args)
+            LET mapArgs ==
+                IF "mode" \in DOMAIN update /\ update.mode = "map" /\ event # "" THEN
+                    MapArgs(var, Default(varName), update.op, update.args, event)
+                ELSE
+                    update.args
+            IN
+            Apply(var, Default(varName), update.op, mapArgs)
     IN
     IF Len(updates) > 1 THEN
-        ApplyUpdates(applied, varName, Tail(updates))
+        ApplyUpdates(applied, varName, Tail(updates), event)
     ELSE
         applied
 
+MapVariable(var, varName, logline) ==
+    LET event == IF "event" \in DOMAIN logline THEN logline.desc ELSE "" IN
+    ApplyUpdates(var, varName, logline[varName], event)
 ====

@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.lbee.instrumentation.TraceInstrumentation;
+import org.lbee.instrumentation.BehaviorRecorder;
 import org.lbee.instrumentation.VirtualField;
 import org.lbee.instrumentation.clock.SharedClock;
 import org.lbee.models.CandidateState;
@@ -59,7 +59,7 @@ public class Node {
     }
 
 
-    private TraceInstrumentation spec;
+    private BehaviorRecorder spec;
     private final VirtualField specState;
     private final VirtualField specVotedFor;
     private final VirtualField specVotesResponded;
@@ -103,9 +103,8 @@ public class Node {
 
         final SharedClock clock = SharedClock.get("raft.clock");
         clock.reset();
-        this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", clock);
-
-        this.spec = new TraceInstrumentation(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
+        this.spec = BehaviorRecorder.create(nodeInfo.name() + ".ndjson", clock);
+        this.spec = BehaviorRecorder.create(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
 
         this.specState = spec.getVariable("state").getField(nodeInfo.name());
         this.specVotedFor = spec.getVariable("votedFor").getField(nodeInfo.name());
@@ -192,7 +191,7 @@ public class Node {
         // Comment or uncomment line below doesn't change the size of state space
         specCommitIndex.set(commitIndex);
 
-        spec.commitChanges("Restart");
+        commitChanges("Restart");
     }
 
 
@@ -355,7 +354,7 @@ public class Node {
         term = newTerm;
         toFollower();
         votedFor = "";
-        spec.commitChanges("UpdateTerm");
+        commitChanges("UpdateTerm");
     }
 
     public void sendHeartbeat() throws IOException {
@@ -475,7 +474,7 @@ public class Node {
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
         specLog.apply("AppendElement", entry);
-        spec.commitChanges("ClientRequest");
+        commitChanges("ClientRequest");
     }
 
     private void appendEntries() throws IOException {
@@ -538,7 +537,7 @@ public class Node {
         }
 
         specCommitIndex.set(commitIndex);
-        spec.commitChanges("AdvanceCommitIndex");
+        commitChanges("AdvanceCommitIndex");
     }
 
     private void handleAppendEntriesRequest(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -691,5 +690,12 @@ public class Node {
      */
     public boolean isShutdown() { return shutdown; }
 
+    private void commitChanges(String description) {
+        try {
+            spec.commitChanges(description);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
 }

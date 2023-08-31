@@ -7,8 +7,8 @@ EXTENDS TLC, Sequences, SequencesExt, Naturals, FiniteSets, Bags, Json, IOUtils
 CONSTANT Nil
 (* Operators to override *)
 Default(varName) ==  Print(<<"Trace spec isn't valid, you should override 'Default' operator.">>, Nil)
-MapArgs(cur, default, op, args, eventName) == Print(<<"Trace spec isn't valid, you should override 'MapArgs' operator.">>, Nil)
-MapArgsBase(cur, default, op, args, eventName) == args
+MapArgs(mapFunction, cur, default, op, args, eventName) == Print(<<"Trace spec isn't valid, you should override 'MapArgs' operator.">>, Nil)
+MapArgsBase(mapFunction, cur, default, op, args, eventName) == args
 
 (* Generic operators *)
 Replace(cur, val) == val
@@ -31,8 +31,8 @@ RemoveFromBag(cur, val) ==
     ELSE
         cur
 
-Add(cur, val) == cur + val
-Sub(cur, val) == cur - val
+AddInteger(cur, val) == cur + val
+SubInteger(cur, val) == cur - val
 
 Unchanged(cur, val) == cur
 
@@ -44,8 +44,8 @@ Apply(var, default, op, args) ==
     []   op = "RemoveElement" -> RemoveElement(var, args[1])
     []   op = "AddToBag" -> AddToBag(var, args[1])
     []   op = "RemoveFromBag" -> RemoveFromBag(var, args[1])
-    []   op = "Add" -> Add(var, args[1])
-    []   op = "Sub" -> Sub(var, args[1])
+    []   op = "Add" -> AddInteger(var, args[1])
+    []   op = "Sub" -> SubInteger(var, args[1])
     []   op = "Clear" -> Clear(var, <<>>)
     []   op = "AppendElement" -> AppendElement(var, args[1])
     []   op = "RemoveKey" -> RemoveKey(var, args[1])
@@ -71,8 +71,8 @@ LOCAL ApplyUpdates(var, varName, updates, event) ==
             ExceptAtPath(var, Default(varName), update.path, update.op, update.args)
         ELSE
             LET mapArgs ==
-                IF "mode" \in DOMAIN update /\ update.mode = "map" /\ event # "" THEN
-                    MapArgs(var, Default(varName), update.op, update.args, event)
+                IF "map" \in DOMAIN update THEN
+                    MapArgs(update.map, var, Default(varName), update.op, update.args, event)
                 ELSE
                     update.args
             IN
@@ -84,6 +84,6 @@ LOCAL ApplyUpdates(var, varName, updates, event) ==
         applied
 
 MapVariable(var, varName, logline) ==
-    LET event == IF "event" \in DOMAIN logline THEN logline.desc ELSE "" IN
+    LET event == IF "event" \in DOMAIN logline THEN logline.event ELSE "" IN
     ApplyUpdates(var, varName, logline[varName], event)
 ====

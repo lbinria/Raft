@@ -148,6 +148,7 @@ IsClientRequest ==
 IsAppendEntries ==
     /\ IsEvent("AppendEntries")
     /\ \E m \in DOMAIN messages :
+    (* TODO benjamin check, source, dest may be inverted, moreover I think I should use \E i,j \in Server instead of messages *)
         LET i == m.mdest
         j == m.msource IN
         AppendEntries(i, j)

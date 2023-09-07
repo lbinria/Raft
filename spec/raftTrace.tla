@@ -196,7 +196,7 @@ RATraceNext ==
 
 
 
-ComposedNext == TRUE
+ComposedNext == FALSE
 
 BASE == INSTANCE raft
 BaseSpec == BASE!Init /\ [][BASE!Next \/ ComposedNext]_vars

@@ -2,7 +2,7 @@ package org.lbee.models.messages;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import org.lbee.instrumentation.TLASerializer;
+import org.lbee.instrumentation.helper.TLASerializer;
 
 public class RequestVoteResponse extends Message implements TLASerializer {
 

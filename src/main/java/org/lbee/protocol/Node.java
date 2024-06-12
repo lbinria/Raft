@@ -1,34 +1,53 @@
-package org.lbee;
+package org.lbee.protocol;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import org.lbee.instrumentation.BehaviorRecorder;
-import org.lbee.instrumentation.VirtualField;
-import org.lbee.instrumentation.clock.SharedClock;
-import org.lbee.models.CandidateState;
+//import org.lbee.instrumentation.BehaviorRecorder;
+//import org.lbee.instrumentation.VirtualField;
+//import org.lbee.instrumentation.clock.SharedClock;
+
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
+
+import org.lbee.config.Configuration;
+import org.lbee.protocol.state.CandidateState;
 import org.lbee.models.ClusterInfo;
 import org.lbee.models.Entry;
-import org.lbee.models.LeaderState;
+import org.lbee.protocol.state.LeaderState;
 import org.lbee.models.NodeInfo;
-import org.lbee.models.NodeState;
+import org.lbee.protocol.state.NodeState;
 import org.lbee.models.messages.AppendEntriesRequest;
 import org.lbee.models.messages.AppendEntriesResponse;
 import org.lbee.models.messages.Message;
 import org.lbee.models.messages.RequestVoteRequest;
 import org.lbee.models.messages.RequestVoteResponse;
+import org.lbee.network.Network;
+import org.lbee.network.Server;
+import org.lbee.helpers.Helpers;
 
 public class Node {
+    public final TLATracer tracer;
+
+    // numéro de mandat (initialisé à 1 puis incrémenté à chaque élection)
     private long term;
+
+    // index of the log entry that is safely replicated on a majority of nodes (called quorum)
     private int commitIndex;
+
+    // Indique l'index de la dernière entrée de journal réussie pour chaque nœud suiveur.
+    // Utilisé par le leader pour déterminer quel entrée de journal peut être considérée comme engagée.
     private long matchIndex;
 
     private long lastHeartbeat;
+
+    // State of the node (Follower, Candidate, Leader)
     private NodeState state;
+
+    // All logs entries
     private final ArrayList<Entry> logs;
+
     private String votedFor = "";
     private CandidateState candidateState;
     private LeaderState leaderState;
@@ -39,14 +58,18 @@ public class Node {
 
     private Configuration configuration;
 
+    // Random number generator
     private final Random randTimeout;
     private final Random randEvent;
 
+    // Network
     private final Network network;
     private final Server server;
 
+    // Shutdown flag
     private boolean shutdown;
 
+    // Election timeout
     private long electionTimeout;
 
     // commitIndex
@@ -55,25 +78,24 @@ public class Node {
     }
 
     public long getLastLogTerm() {
-        return logs.size() == 0 ? 0 : logs.get(logs.size() - 1).getTerm();
+        return logs.isEmpty() ? 0 : logs.get(logs.size() - 1).getTerm();
     }
 
-
-    private BehaviorRecorder spec;
-    private final VirtualField specState;
-    private final VirtualField specVotedFor;
-    private final VirtualField specVotesResponded;
-    private final VirtualField specVotesGranted;
-    private final VirtualField specMatchIndex;
-    private final VirtualField specNextIndex;
-    private final VirtualField specCommitIndex;
-    private final VirtualField specCurrentTerm;
-    private final VirtualField specMessages;
-    private final VirtualField specLog;
+    // Trace variables
+    private final VirtualField traceState;
+    private final VirtualField traceVotedFor;
+    private final VirtualField traceVotesResponded;
+    private final VirtualField traceVotesGranted;
+    private final VirtualField traceMatchIndex;
+    private final VirtualField traceNextIndex;
+    private final VirtualField traceCommitIndex;
+    private final VirtualField traceCurrentTerm;
+    private final VirtualField traceMessages;
+    private final VirtualField traceLog;
 
     private boolean reduceSSflag;
 
-    public Node(String nodeName, Configuration configuration) throws IOException {
+    public Node(String nodeName, Configuration configuration, TLATracer tracer) {
         // Utils
         this.configuration = configuration;
         this.clusterInfo = configuration.getClusterInfo();
@@ -97,25 +119,24 @@ public class Node {
 
         //leaderState = new LeaderState(/*quorum*/);
 
-
         electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
 
-        final SharedClock clock = SharedClock.get("raft.clock");
-        clock.reset();
-        this.spec = BehaviorRecorder.create(nodeInfo.name() + ".ndjson", clock);
-        this.spec = BehaviorRecorder.create(nodeInfo.name() + ".ndjson", SharedClock.get("raft.clock"));
+        // Tracer initialization
+        this.tracer = tracer;
 
-        this.specState = spec.getVariable("state").getField(nodeInfo.name());
-        this.specVotedFor = spec.getVariable("votedFor").getField(nodeInfo.name());
-        this.specVotesResponded = spec.getVariable("votesResponded").getField(nodeInfo.name());
-        this.specVotesGranted = spec.getVariable("votesGranted").getField(nodeInfo.name());
-        this.specNextIndex = spec.getVariable("nextIndex").getField(nodeInfo.name());
-        this.specMatchIndex = spec.getVariable( "matchIndex").getField(nodeInfo.name());
-        this.specCommitIndex = spec.getVariable("commitIndex").getField(nodeInfo.name());
-        this.specCurrentTerm = spec.getVariable("currentTerm").getField(nodeInfo.name());
-        this.specMessages = spec.getVariable("messages");
-        this.specLog = spec.getVariable("log").getField(nodeInfo.name());
+        // Initialize trace variables
+        this.traceState = tracer.getVariableTracer("state");
+        this.traceVotedFor = tracer.getVariableTracer("votedFor");
+        this.traceVotesResponded = tracer.getVariableTracer("votesResponded");
+        this.traceVotesGranted = tracer.getVariableTracer("votesGranted");
+        this.traceNextIndex = tracer.getVariableTracer("nextIndex");
+        this.traceMatchIndex = tracer.getVariableTracer("matchIndex");
+        this.traceCommitIndex = tracer.getVariableTracer("commitIndex");
+        this.traceCurrentTerm = tracer.getVariableTracer("currentTerm");
+        this.traceMessages = tracer.getVariableTracer("messages");
+        this.traceLog = tracer.getVariableTracer("log");
+
         // Feature flags
         this.reduceSSflag = true;
     }
@@ -123,7 +144,7 @@ public class Node {
     private void setState(NodeState state) {
         this.state = state;
         // this.spec.notify(specState, SET, state.toString());
-        this.specState.set(state.toString());
+//        this.specState.set(state.toString());
     }
 
     private void toCandidate() {
@@ -131,8 +152,30 @@ public class Node {
         candidateState = new CandidateState();
     }
 
-    private void toLeader() {
+    private void toLeader() throws IOException {
         setState(NodeState.Leader);
+
+//        BecomeLeader(i) ==
+        //    /\ state[i] = Candidate
+        //                /\ votesGranted[i] \in Quorum
+        //    /\ state'      = [state EXCEPT ![i] = Leader]
+        //                /\ nextIndex'  = [nextIndex EXCEPT ![i] =
+        //                [j \in Server |-> Len(log[i]) + 1]]
+        //    /\ matchIndex' = [matchIndex EXCEPT ![i] =
+        //                [j \in Server |-> 0]]
+        //    /\ elections'  = elections \cup
+        //        {[eterm     |-> currentTerm[i],
+        //                eleader   |-> i,
+        //                elog      |-> log[i],
+        //                evotes    |-> votesGranted[i](*,
+        //                evoterLog |-> voterLog[i] *)]}
+        //    /\ UNCHANGED <<messages, currentTerm, votedFor, candidateVars, logVars>>
+
+//        this.traceState.update(state.toString());
+
+//        tracer.log("BecomeLeader", new Object[] { this.nodeInfo.name() });
+
+
 //        final Set<String> quorum = new HashSet<>(candidateState.getGranted());
         if (leaderState == null)
             leaderState = new LeaderState();
@@ -146,7 +189,6 @@ public class Node {
         // accept connections
         this.server.start();
         System.out.printf("Node %s is listening on port %s. Seed: %s.\n", nodeInfo.name(), nodeInfo.port(), nodeInfo.seed());
-
     }
 
     public void connect() {
@@ -156,44 +198,42 @@ public class Node {
                 .forEach(n -> network.addConnection(n.name(), n.hostname(), n.port()));
     }
 
-    private void restart() throws InterruptedException {
+    private void restart() throws InterruptedException, IOException {
         System.out.printf("Node %s restarted.\n", nodeInfo.name());
-//    /\ state'          = [state EXCEPT ![i] = Follower]
-//                /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]
-//                /\ votesGranted'   = [votesGranted EXCEPT ![i] = {}]
-//\*    /\ voterLog'       = [voterLog EXCEPT ![i] = [j \in {} |-> <<>>]]
-//                /\ nextIndex'      = [nextIndex EXCEPT ![i] = [j \in Server |-> 1]]
-//                /\ matchIndex'     = [matchIndex EXCEPT ![i] = [j \in Server |-> 0]]
-//                /\ commitIndex'    = [commitIndex EXCEPT ![i] = 0]
 
-        toFollower();
+//    /\ state'          = [state EXCEPT ![i] = Follower]                   (0)
+//    /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]                (1)
+//    /\ votesGranted'   = [votesGranted EXCEPT ![i] = {}]                  (2)
+//    /\ nextIndex'      = [nextIndex EXCEPT ![i] = [j \in Server |-> 1]]   (3)
+//    /\ matchIndex'     = [matchIndex EXCEPT ![i] = [j \in Server |-> 0]]  (4)
+//    /\ commitIndex'    = [commitIndex EXCEPT ![i] = 0]                    (5)
+
+        toFollower(); // (0)
+//        traceState.update(state.toString()); // (0)
+
         if (candidateState != null) {
-            candidateState.clear();
-            // Notify spec
-            // Comment or uncomment line below doesn't change the size of state space
-             specVotesResponded.clear();
-             specVotesGranted.clear();
+            candidateState.clear(); // (1) (2)
+//            traceVotesResponded.update(new ArrayList<>(candidateState.getResponded())); // (1)
+//            traceVotesGranted.update(new ArrayList<>(candidateState.getGranted())); // (2)
         }
         else if (leaderState != null) {
             leaderState.clear();
-            // Comment or uncomment line below doesn't change the size of state space
-             specNextIndex.init();
-             specMatchIndex.clear();
-
             for (NodeInfo ni : clusterInfo.getNodes()) {
-                leaderState.getNextIndexes().put(ni.name(), 1);
-                leaderState.getMatchIndexes().put(ni.name(), 0);
+                leaderState.getNextIndexes().put(ni.name(), 1); // (3)
+                leaderState.getMatchIndexes().put(ni.name(), 0); // (4)
+//                traceNextIndex.update(ni.name() + " -> 1"); // (3)
+//                traceMatchIndex.update(ni.name() + " -> 0"); // (4)
             }
-
         }
 
-        commitIndex = 0;
-        // Comment or uncomment line below doesn't change the size of state space
-        specCommitIndex.set(commitIndex);
+        commitIndex = 0; // (5)
+//        traceCommitIndex.update(0); // (5)
 
-        commitChanges("Restart");
+        // Log trace
+        tracer.log("Restart");
+
+//        commitChanges("Restart");
     }
-
 
     public void run() throws IOException {
         long start = System.currentTimeMillis();
@@ -221,12 +261,13 @@ public class Node {
             if (randEvent.nextInt(0, 8) == 0) {
                 try {
                     restart();
-                } catch (InterruptedException e) {
+                } catch (InterruptedException | IOException e) {
                     throw new RuntimeException(e);
                 }
             }
         }, 1000);
 
+        // Simulate client request (only leader can handle client request)
         final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
             if (randEvent.nextInt(0, 2) == 0)
                 clientRequest();
@@ -249,6 +290,14 @@ public class Node {
         }, 3000);
 
         while (!shutdown) {
+            /**
+             * 1 - si je suis leader, j'envoie un heartbeat toutes les 500ms
+             * 2 - si je suis follower ou candidat et que je n'ai pas reçu de heartbeat depuis un certain temps, je déclenche une nouvelle élection
+             * 3 - je prends les messages (peu importe si je suis leader, follower ou candidat)
+             * 4 - j'affiche le log de temps en temps
+             * 5 - je simule une requête client à ce noeud (si je suis leader)
+             */
+
             // Leader sends heartbeat every 500ms
             sendHeartbeatTrigger.run();
             // Start new election if it hasn't received heartbeat for some time
@@ -289,12 +338,12 @@ public class Node {
         candidateState.getGranted().add(nodeInfo.name());
         votedFor = nodeInfo.name();
         // Add term
-        term += 1;
+        term += 1; // because of new election
         // Comment or uncomment line below doesn't change the size of state space
 //        specCurrentTerm.apply("Add", 1);
 
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
-        spec.commitChanges("Timeout");
+//        spec.commitChanges("Timeout");
 
         // Simulate message exchange between this node and himself (see in raft spec, localhost exchange messages with itself)
 
@@ -303,13 +352,13 @@ public class Node {
         // Reproduce bug by commenting this bloc, show with tla+ debug how to find what's wrong ! by using hit count and ENABLED
         if (reduceSSflag) {
             final Message fakeMessage = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
-            specMessages.apply("AddToBag", fakeMessage);
+//            specMessages.apply("AddToBag", fakeMessage);
         }
-        spec.commitChanges("RequestVoteRequest");
-        specVotedFor.set(nodeInfo.name());
-        spec.commitChanges("HandleRequestVoteRequest");
-        specVotesGranted.add(nodeInfo.name());
-        spec.commitChanges("HandleRequestVoteResponse");
+//        spec.commitChanges("RequestVoteRequest");
+//        specVotedFor.set(nodeInfo.name());
+//        spec.commitChanges("HandleRequestVoteRequest");
+//        specVotesGranted.add(nodeInfo.name());
+//        spec.commitChanges("HandleRequestVoteResponse");
 
 
         sendVoteRequest();
@@ -391,9 +440,9 @@ public class Node {
             final Message message = new RequestVoteRequest(nodeInfo.name(), ni.name(), term, getLastLogTerm(), getLastLogIndex(),0);
 
             if (reduceSSflag)
-                specMessages.apply("AddToBag", message);
+                // specMessages.apply("AddToBag", message);
 
-            spec.commitChanges("RequestVoteRequest");
+            // spec.commitChanges("RequestVoteRequest");
             // networkManagers.get(ni.name()).send(message);
             network.send(ni.name(),message);
         }
@@ -407,12 +456,12 @@ public class Node {
 
         if (m.getTerm() <= term && grant) {
             votedFor = m.getFrom();
-            specVotedFor.set(votedFor);
+            // specVotedFor.set(votedFor);
         }
 
         // Reply to vote request
         final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
-        spec.commitChanges("HandleRequestVoteRequest");
+        // spec.commitChanges("HandleRequestVoteRequest");
         // networkManagers.get(m.getFrom()).send(response);
         network.send(m.getFrom(),response);
     }
@@ -429,10 +478,10 @@ public class Node {
         if (m.isGranted()) {
             // Add node that granted a vote to me
             candidateState.getGranted().add(m.getFrom());
-            specVotesGranted.add(m.getFrom());
+            // specVotesGranted.add(m.getFrom());
         }
 
-        spec.commitChanges("HandleRequestVoteResponse");
+        // spec.commitChanges("HandleRequestVoteResponse");
 
         // Note: BUG
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum())
@@ -454,11 +503,11 @@ public class Node {
         for (NodeInfo ni : clusterInfo.getNodes()) {
             leaderState.getNextIndexes().put(ni.name(), logs.size() + 1);
             leaderState.getMatchIndexes().put(ni.name(), 0);
-            specNextIndex.getField(ni.name()).set(logs.size() + 1);
-            specMatchIndex.getField(ni.name()).set(0);
+            // specNextIndex.getField(ni.name()).set(logs.size() + 1);
+            // specMatchIndex.getField(ni.name()).set(0);
         }
 
-        spec.commitChanges("BecomeLeader");
+        // spec.commitChanges("BecomeLeader");
     }
 
     private void clientRequest() {
@@ -473,7 +522,7 @@ public class Node {
         logs.add(entry);
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
-        specLog.apply("AppendElement", entry);
+        // specLog.apply("AppendElement", entry);
         commitChanges("ClientRequest");
     }
 
@@ -505,9 +554,9 @@ public class Node {
 
         int msgCommitIndex = Math.min(commitIndex, lastEntryIndex);
         final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, msgCommitIndex, 0);
-        specMessages.apply("AddToBag", appendEntriesRequest);
+        // specMessages.apply("AddToBag", appendEntriesRequest);
         System.out.println(appendEntriesRequest);
-        spec.commitChanges("AppendEntries");
+        // spec.commitChanges("AppendEntries");
         // networkManagers.get(nodeName).send(appendEntriesRequest);
         network.send(nodeName,appendEntriesRequest);
     }
@@ -536,7 +585,7 @@ public class Node {
             commitIndex = maxAgreeIndex;
         }
 
-        specCommitIndex.set(commitIndex);
+        // specCommitIndex.set(commitIndex);
         commitChanges("AdvanceCommitIndex");
     }
 
@@ -558,7 +607,7 @@ public class Node {
         if (state == NodeState.Candidate) {
             if (appendEntriesRequest.getTerm() == term)
                 toFollower();
-            spec.commitChanges("HandleAppendEntriesRequest");
+            // spec.commitChanges("HandleAppendEntriesRequest");
         }
         else if (state == NodeState.Follower) {
             if (appendEntriesRequest.getTerm() == term && logOk)
@@ -569,7 +618,7 @@ public class Node {
 
         System.out.printf("--- NODE %s ENTRIES %s.\n", nodeInfo.name(), logs);
 
-        //spec.commitChanges("HandleAppendEntriesRequest");
+        //².commitChanges("HandleAppendEntriesRequest");
     }
 
     private void acceptAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -586,7 +635,7 @@ public class Node {
 
 //          /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
             commitIndex = appendEntriesRequest.getCommitIndex();
-            specCommitIndex.set(commitIndex);
+            // specCommitIndex.set(commitIndex);
 //            /\ Reply([mtype           |-> AppendEntriesResponse,
 //            mterm           |-> currentTerm[i],
 //            msuccess        |-> TRUE,
@@ -598,9 +647,9 @@ public class Node {
             int matchIndex = (int)appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size();
 
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
-            specMessages.apply("AddToBag", appendEntriesResponse);
-            specMessages.apply("RemoveFromBag", appendEntriesRequest);
-            spec.commitChanges("HandleAppendEntriesRequest");
+            // specMessages.apply("AddToBag", appendEntriesResponse);
+            // specMessages.apply("RemoveFromBag", appendEntriesRequest);
+            // spec.commitChanges("HandleAppendEntriesRequest");
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
 
@@ -618,15 +667,15 @@ public class Node {
             System.out.print("Conflict.\n");
             logs.remove(logs.size() - 1);
             //specLog.apply("RemoveElementAt", logs.size() - 1);
-            spec.commitChanges("HandleAppendEntriesRequest");
+            // spec.commitChanges("HandleAppendEntriesRequest");
         }
 
         // No conflict append entries
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
             System.out.print("No conflict.\n");
             logs.addAll(appendEntriesRequest.getEntries());
-            specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
-            spec.commitChanges("HandleAppendEntriesRequest");
+            // specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
+            // spec.commitChanges("HandleAppendEntriesRequest");
         }
     }
 
@@ -653,14 +702,14 @@ public class Node {
             int nextIndex = matchIndex + 1;
             leaderState.getNextIndexes().put(fromNodeName, nextIndex);
             leaderState.getMatchIndexes().put(fromNodeName, matchIndex);
-            specNextIndex.getField(fromNodeName).set(nextIndex);
-            specMatchIndex.getField(fromNodeName).set(matchIndex);
+            // specNextIndex.getField(fromNodeName).set(nextIndex);
+            // specMatchIndex.getField(fromNodeName).set(matchIndex);
         } else {
             int nextIndex = leaderState.getNextIndexes().get(fromNodeName);
             leaderState.getNextIndexes().put(fromNodeName, Math.max(nextIndex - 1, 1));
         }
 
-        spec.commitChanges("HandleAppendEntriesResponse");
+        // spec.commitChanges("HandleAppendEntriesResponse");
 
         // Advance index
         advanceCommitIndex();
@@ -671,12 +720,11 @@ public class Node {
         System.out.print("Reject append entries.\n");
         String to = appendEntriesRequest.getFrom();
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
-        specMessages.apply("AddToBag", appendEntriesResponse);
-        specMessages.apply("RemoveFromBag", appendEntriesRequest);
-        spec.commitChanges("HandleAppendEntriesRequest");
+        // specMessages.apply("AddToBag", appendEntriesResponse);
+        // specMessages.apply("RemoveFromBag", appendEntriesRequest);
+        // spec.commitChanges("HandleAppendEntriesRequest");
         network.send(to, appendEntriesResponse);
     }
-
 
 
     public void shutdown() throws IOException {
@@ -691,11 +739,11 @@ public class Node {
     public boolean isShutdown() { return shutdown; }
 
     private void commitChanges(String description) {
-        try {
-            spec.commitChanges(description);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+//        try {
+//            // spec.commitChanges(description);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
 }

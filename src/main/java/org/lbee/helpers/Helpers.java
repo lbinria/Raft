@@ -1,4 +1,6 @@
-package org.lbee;
+package org.lbee.helpers;
+
+import org.lbee.config.Configuration;
 
 import java.util.Random;
 

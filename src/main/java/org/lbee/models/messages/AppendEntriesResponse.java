@@ -3,7 +3,7 @@ package org.lbee.models.messages;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import org.lbee.instrumentation.TLASerializer;
+import org.lbee.instrumentation.helper.TLASerializer;
 import org.lbee.models.Entry;
 
 public class AppendEntriesResponse extends Message implements TLASerializer {

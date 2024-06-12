@@ -1,11 +1,15 @@
-package org.lbee.models;
+package org.lbee.protocol.state;
 
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 public class LeaderState {
+
+    /**
+     * Difference between nextIndex and matchIndex is that nextIndex is the index of the next log to send
+     * while matchIndex is the index of the last log that has been confirmed by the follower
+     * nextIndex is a hashmap that contains for each follower the index of the next log to send
+     * matchIndex is a hashmap that contains for each follower the index of the last confirmed log
+     */
 
     private final HashMap<String, Integer> nextIndexes;
     private final HashMap<String, Integer> matchIndexes;

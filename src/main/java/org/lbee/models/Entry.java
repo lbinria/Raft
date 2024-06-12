@@ -2,7 +2,7 @@ package org.lbee.models;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import org.lbee.instrumentation.TLASerializer;
+import org.lbee.instrumentation.helper.TLASerializer;
 
 public class Entry implements TLASerializer {
 

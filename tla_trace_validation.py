@@ -3,7 +3,7 @@ import argparse
 from subprocess import Popen
 
 # Path to TLA installation
-tla_dir = "/opt/TLAToolbox-1.8.0-nightly/toolbox"
+tla_dir = "/home/terrytmp/stage/toolbox"
 tla_jar = os.path.join(tla_dir, "tla2tools.jar")
 community_modules_jar = os.path.join(tla_dir, "CommunityModules-deps.jar")
 tla_cp = f"{tla_jar}:{community_modules_jar}"

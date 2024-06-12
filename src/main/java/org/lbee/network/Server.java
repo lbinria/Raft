@@ -1,4 +1,4 @@
-package org.lbee;
+package org.lbee.network;
 
 import java.io.IOException;
 import java.net.ServerSocket;

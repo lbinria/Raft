@@ -3,19 +3,24 @@ from subprocess import Popen, PIPE, TimeoutExpired
 import ndjson
 import clean
 
-def run(nodeName):
-    p = Popen([
+JAR_NAME = "Raft-1.2-jar-with-dependencies.jar"
+CONFIG_FILE = "raft.ndjson.conf"
+TIMEOUT = 5.0
+
+def run(node_name):
+    args = [
         "java",
-        "-jar",
-        "target/Raft-1.1-jar-with-dependencies.jar",
-        nodeName
-        ])
-    return p
+        "-cp",
+        f"target/{JAR_NAME}",
+        "org.lbee.protocol.Main",
+        node_name
+    ]
+    return Popen(args)
 
-
-def run_all(timeout=5.):
+#
+def run_all(timeout=TIMEOUT):
     # Load config
-    with open("raft.ndjson.conf", 'r') as f:
+    with open(CONFIG_FILE) as f:
         json_config = ndjson.load(f)
 
     servers = json_config[0]['Server']
@@ -29,7 +34,6 @@ def run_all(timeout=5.):
         print("Timeout reach.\n")
         for p in processes:
             p.terminate()
-
 
 if __name__ == "__main__":
     # Clean directory

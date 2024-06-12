@@ -1,9 +1,14 @@
-package org.lbee.models;
+package org.lbee.protocol.state;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 
 public class CandidateState {
+
+    /**
+     * Difference between the two states:
+     * - Responded: The list of candidates that have responded to the request.
+     * - Granted: The list of candidates that have been granted access to the resource.
+     */
 
     private final ArrayList<String> responded;
     private final ArrayList<String> granted;

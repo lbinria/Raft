@@ -1,4 +1,4 @@
-package org.lbee;
+package org.lbee.config;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

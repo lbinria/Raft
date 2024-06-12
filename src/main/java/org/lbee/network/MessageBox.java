@@ -1,4 +1,4 @@
-package org.lbee;
+package org.lbee.network;
 
 import org.lbee.models.messages.Message;
 

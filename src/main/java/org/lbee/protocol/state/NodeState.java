@@ -1,4 +1,4 @@
-package org.lbee.models;
+package org.lbee.protocol.state;
 
 public enum NodeState {
     Follower,

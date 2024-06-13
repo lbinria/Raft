@@ -58,9 +58,9 @@ or
 `python run_impl.py`
 
 and then perform the trace validation on the obtained trace file
-`trace-tla.ndjson` by using the command:
+`trace.ndjson` by using the command:
 
-`python tla_trace_validation.py spec/raftTrace.tla --trace trace-tla.ndjson`
+`python tla_trace_validation.py spec/raftTrace.tla --trace trace.ndjson`
 
 # Directory structure
 

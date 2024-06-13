@@ -14,12 +14,12 @@ def read_json(filename):
 def get_files(config):
     files = []
     for line in config:
-        for v in line.values():
-            files += [f+".ndjson" for f in v]
+        if "Server" in line:
+            files += [server + ".ndjson" for server in line["Server"]]
     return files
 
 # Merge trace files
-def run(files, sort=False, remove_meta=False, out="trace.ndjson"):
+def run(files, sort=False, remove_meta=False, out="trace.ndjson", config="conf.ndjson"):
     # Get all trace files - either the files themselves or all ndjson files in the directories pointed by files
     all_paths = reduce(lambda a, b: a + b, ([f] if os.path.isfile(f) else [os.path.join(f, filename) for filename in os.listdir(f) if filename.endswith('.ndjson')] for f in files))
     # Open trace files and concatenate events
@@ -30,6 +30,9 @@ def run(files, sort=False, remove_meta=False, out="trace.ndjson"):
     # Remove meta data: clock and sender
     if remove_meta:
         merged_trace = [{k:v for k, v in t.items() if k != "clock" and k != "logger"} for t in merged_trace]
+    # Add config to the beginning of the trace
+    if config:
+        merged_trace = [read_json(config)[0]] + merged_trace
     # Dump in the target file
     with open(out, 'w') as f:
         ndjson.dump(merged_trace, f)
@@ -50,5 +53,6 @@ if __name__ == "__main__":
         config = read_json(args.config)
         files = get_files(config)
     print(f"Traces merged: {files}")
+
     # Run
-    run(files, sort=args.sort, remove_meta=args.remove_meta, out=args.out)
+    run(files, sort=args.sort, remove_meta=args.remove_meta, out=args.out, config=args.config)

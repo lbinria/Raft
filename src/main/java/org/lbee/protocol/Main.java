@@ -21,7 +21,7 @@ public class Main {
         final String nodeName = args[0];
 
         // Write configuration
-        final Configuration configuration = new Configuration(ConfigurationManager.read("raft.ndjson.conf"));
+        final Configuration configuration = new Configuration(ConfigurationManager.read("conf.ndjson"));
         //System.out.println("Config: " + configuration);
 
         // Some checks

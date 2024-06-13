@@ -4,7 +4,7 @@ import ndjson
 import clean
 
 JAR_NAME = "Raft-1.2-jar-with-dependencies.jar"
-CONFIG_FILE = "raft.ndjson.conf"
+CONFIG_FILE = "conf.ndjson"
 TIMEOUT = 5.0
 
 def run(node_name):
@@ -17,7 +17,7 @@ def run(node_name):
     ]
     return Popen(args)
 
-#
+# Run all nodes
 def run_all(timeout=TIMEOUT):
     # Load config
     with open(CONFIG_FILE) as f:
@@ -37,5 +37,5 @@ def run_all(timeout=TIMEOUT):
 
 if __name__ == "__main__":
     # Clean directory
-    clean.clean()
+    clean.clean() # except conf.ndjson
     run_all()

@@ -12,11 +12,11 @@ TraceNil == "null"
 
 (* Replace Server constant *)
 TraceServer ==
-    ToSet(JsonTrace[1].Server)
+    ToSet(Trace[1].Server)
 
 (* Replace Value constant *)
 TraceValue ==
-    ToSet(JsonTrace[1].Value)
+    ToSet(Trace[1].Value)
 
 (* Can be extracted from init *)
 RADefault(varName) ==
@@ -34,43 +34,43 @@ RADefault(varName) ==
 RAMapVariables(t) ==
     /\
         IF "currentTerm" \in DOMAIN t
-        THEN currentTerm' = MapVariable(currentTerm, "currentTerm", t)
+        THEN currentTerm' = UpdateVariable(currentTerm, "currentTerm", t)
         ELSE TRUE
     /\
         IF "state" \in DOMAIN t
-        THEN state' = MapVariable(state, "state", t)
+        THEN state' = UpdateVariable(state, "state", t)
         ELSE TRUE
     /\
         IF "votedFor" \in DOMAIN t
-        THEN votedFor' = MapVariable(votedFor, "votedFor", t)
+        THEN votedFor' = UpdateVariable(votedFor, "votedFor", t)
         ELSE TRUE
     /\
         IF "votesResponded" \in DOMAIN t
-        THEN votesResponded' = MapVariable(votesResponded, "votesResponded", t)
+        THEN votesResponded' = UpdateVariable(votesResponded, "votesResponded", t)
         ELSE TRUE
     /\
         IF "votesGranted" \in DOMAIN t
-        THEN votesGranted' = MapVariable(votesGranted, "votesGranted", t)
+        THEN votesGranted' = UpdateVariable(votesGranted, "votesGranted", t)
         ELSE TRUE
     /\
         IF "nextIndex" \in DOMAIN t
-        THEN nextIndex' = MapVariable(nextIndex, "nextIndex", t)
+        THEN nextIndex' = UpdateVariable(nextIndex, "nextIndex", t)
         ELSE TRUE
     /\
         IF "matchIndex" \in DOMAIN t
-        THEN matchIndex' = MapVariable(matchIndex, "matchIndex", t)
+        THEN matchIndex' = UpdateVariable(matchIndex, "matchIndex", t)
         ELSE TRUE
     /\
         IF "messages" \in DOMAIN t
-        THEN messages' = MapVariable(messages, "messages", t)
+        THEN messages' = UpdateVariable(messages, "messages", t)
         ELSE TRUE
     /\
         IF "log" \in DOMAIN t
-        THEN log' = MapVariable(log, "log", t)
+        THEN log' = UpdateVariable(log, "log", t)
         ELSE TRUE
     /\
         IF "commitIndex" \in DOMAIN t
-        THEN commitIndex' = MapVariable(commitIndex, "commitIndex", t)
+        THEN commitIndex' = UpdateVariable(commitIndex, "commitIndex", t)
         ELSE TRUE
 
 

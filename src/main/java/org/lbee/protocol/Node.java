@@ -230,7 +230,7 @@ public class Node {
 //        traceCommitIndex.update(0); // (5)
 
         // Log trace
-        tracer.log("Restart");
+        tracer.log("Restart"); // pas besoin de paramètre dans un premier temps
 
 //        commitChanges("Restart");
     }

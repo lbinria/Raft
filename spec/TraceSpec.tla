@@ -12,39 +12,44 @@ VARIABLES l
 Vars == Print(<<"Trace spec isn't valid, you should override 'Vars'.">>, <<>>)
 BaseInit == Print(<<"Trace spec isn't valid, you should override 'BaseInit'.">>, Nil)
 TraceNext == Print(<<"Trace spec isn't valid, you should override 'TraceNext'.">>, Nil)
-MapVariables(logline) == Print(<<"Trace spec isn't valid, you should override 'MapVariables'.">>, Nil)
+UpdateVariables(logline) == Print(<<"Trace spec isn't valid, you should override 'UpdateVariables'.">>, Nil)
 \*ASSUME Vars /= <<>>
 \*ASSUME TraceNext # Nil
 
 (* Read trace *)
-JsonTrace ==
+Trace ==
     IF "TRACE_PATH" \in DOMAIN IOEnv THEN
         ndJsonDeserialize(IOEnv.TRACE_PATH)
     ELSE
-        Print(<<"Failed to validate the trace. TRACE_PATH environnement variable was expected.">>, "")
+        Print(<<"TRACE_PATH environnement variable not found, use default trace file.">>, ndJsonDeserialize("trace.ndjson"))
+
+(* Read config *)
+Config ==
+    IF "CONFIG_PATH" \in DOMAIN IOEnv THEN
+        ndJsonDeserialize(IOEnv.CONFIG_PATH)
+    ELSE
+        Print(<<"CONFIG_PATH environnement variable not found, use default config file.">>, ndJsonDeserialize("conf.ndjson"))
 
 (* Manage exceptions: assume that trace is free of any exception *)
-ASSUME \A t \in ToSet(JsonTrace) : "event" \notin DOMAIN t \/ ("event" \in DOMAIN t /\ t.event /= "__exception")
-
-(* Get trace skipping config line *)
-Trace ==
-    SubSeq(JsonTrace, 2, Len(JsonTrace))
+ASSUME \A t \in ToSet(Trace) : "event" \notin DOMAIN t \/ ("event" \in DOMAIN t /\ t.event /= "__exception")
 
 logline ==
     Trace[l]
-
-
 
 IsEvent(e) ==
     \* Equals FALSE if we get past the end of the log, causing model checking to stop.
     /\ l \in 1..Len(Trace)
     /\ IF "event" \in DOMAIN logline THEN logline.event = e ELSE TRUE
     /\ l' = l + 1
-    /\ MapVariables(logline)
+    /\ UpdateVariables(logline)
 
 TraceInit ==
     /\ l = 1
     /\ BaseInit
+
+IsStuttering ==
+    /\ IsEvent("Stuttering")
+    /\ UNCHANGED Vars
 
 TraceSpec ==
     \* Because of  [A]_v <=> A \/ v=v'  , the following formula is logically
@@ -53,7 +58,7 @@ TraceSpec ==
      \* states of a *seen* state.  Since one or more states may appear one or
      \* more times in the the trace, the  UNCHANGED vars  combined with the
      \*  TraceView  that includes  TLCGet("level")  is our workaround.
-    TraceInit /\ [][TraceNext]_<<l, Vars>>
+    TraceInit /\ [][TraceNext \/ IsStuttering]_<<l, Vars>>
 
 TraceAccepted ==
     LET d == TLCGet("stats").diameter IN
@@ -68,4 +73,9 @@ TraceView ==
      \* consider  s_i  and s_j  , where  i  and  j  are the positions of  s  in the trace,
      \* to be different states.
     <<Vars, TLCGet("level")>>
+
+Termination ==
+    \* -Dtlc2.tool.queue.IStateQueue=StateDeque
+    l = Len(Trace) + 1  => TLCSet("exit", TRUE)
+
 ====

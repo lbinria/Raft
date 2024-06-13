@@ -1,11 +1,11 @@
-import os
-from subprocess import Popen, PIPE, TimeoutExpired
+from subprocess import Popen, TimeoutExpired
 import ndjson
 import clean
 
 JAR_NAME = "Raft-1.2-jar-with-dependencies.jar"
 CONFIG_FILE = "conf.ndjson"
 TIMEOUT = 5.0
+
 
 def run(node_name):
     args = [
@@ -17,6 +17,7 @@ def run(node_name):
     ]
     return Popen(args)
 
+
 # Run all nodes
 def run_all(timeout=TIMEOUT):
     # Load config
@@ -26,7 +27,7 @@ def run_all(timeout=TIMEOUT):
     servers = json_config[0]['Server']
 
     # Run all processes
-    processes =  [run(node_name) for node_name in servers]
+    processes = [run(node_name) for node_name in servers]
     try:
         for p in processes:
             p.wait(timeout)
@@ -35,7 +36,8 @@ def run_all(timeout=TIMEOUT):
         for p in processes:
             p.terminate()
 
+
 if __name__ == "__main__":
     # Clean directory
-    clean.clean() # except conf.ndjson
+    clean.clean()  # except conf.ndjson
     run_all()

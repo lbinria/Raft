@@ -3,14 +3,8 @@ package org.lbee.protocol;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-
-//import org.lbee.instrumentation.BehaviorRecorder;
-//import org.lbee.instrumentation.VirtualField;
-//import org.lbee.instrumentation.clock.SharedClock;
-
 import org.lbee.instrumentation.trace.TLATracer;
 import org.lbee.instrumentation.trace.VirtualField;
-
 import org.lbee.config.Configuration;
 import org.lbee.protocol.state.CandidateState;
 import org.lbee.models.ClusterInfo;
@@ -229,10 +223,8 @@ public class Node {
         commitIndex = 0; // (5)
 //        traceCommitIndex.update(0); // (5)
 
-        // Log trace
-        tracer.log("Restart"); // pas besoin de paramètre dans un premier temps
-
-//        commitChanges("Restart");
+        // NOTE : trace Restart
+        tracer.log("Restart");
     }
 
     public void run() throws IOException {
@@ -269,8 +261,13 @@ public class Node {
 
         // Simulate client request (only leader can handle client request)
         final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 2) == 0)
-                clientRequest();
+            if (randEvent.nextInt(0, 2) == 0) {
+                try {
+                    clientRequest();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }, 1000);
 
         final IntervalTrigger appendEntriesTrigger = new IntervalTrigger(() -> {
@@ -306,6 +303,7 @@ public class Node {
                 timeout();
             }
 
+            // TODO : BEGIN
             takeMessage();
 
             displayLogTrigger.run();
@@ -330,33 +328,37 @@ public class Node {
         lastHeartbeat = System.currentTimeMillis();
         electionTimeout = 5000 + randTimeout.nextInt(0, 5000);
 
-
         // Change state to candidate
         toCandidate();
+
         // Vote for himself
         candidateState.getResponded().add(nodeInfo.name());
         candidateState.getGranted().add(nodeInfo.name());
         votedFor = nodeInfo.name();
+
         // Add term
         term += 1; // because of new election
+
+        // NOTE : trace Timeout
+        tracer.log("Timeout");
+
         // Comment or uncomment line below doesn't change the size of state space
 //        specCurrentTerm.apply("Add", 1);
 
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
-//        spec.commitChanges("Timeout");
 
         // Simulate message exchange between this node and himself (see in raft spec, localhost exchange messages with itself)
 
         // Necessary log if we want obtains Quorum, because trace spec can check holes
         // in variable, but not hole in event
         // Reproduce bug by commenting this bloc, show with tla+ debug how to find what's wrong ! by using hit count and ENABLED
-        if (reduceSSflag) {
-            final Message fakeMessage = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
-//            specMessages.apply("AddToBag", fakeMessage);
-        }
-//        spec.commitChanges("RequestVoteRequest");
-//        specVotedFor.set(nodeInfo.name());
-//        spec.commitChanges("HandleRequestVoteRequest");
+//        if (reduceSSflag) {
+//            final Message fakeMessage = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
+////            specMessages.apply("AddToBag", fakeMessage);
+//        }
+
+        // NOTE : trace RequestVoteResponse -> ne devrait pas exister
+//        tracer.log("RequestVoteResponse");
 //        specVotesGranted.add(nodeInfo.name());
 //        spec.commitChanges("HandleRequestVoteResponse");
 
@@ -399,11 +401,14 @@ public class Node {
 
 
     // TLA UpdateTerm
-    private void updateTerm(long newTerm) {
+    private void updateTerm(long newTerm) throws IOException {
         term = newTerm;
         toFollower();
         votedFor = "";
-        commitChanges("UpdateTerm");
+
+        // NOTE : trace UpdateTerm OOOOOOOOOOOOOOOOOO
+        tracer.log("UpdateTerm");
+//        commitChanges("UpdateTerm");
     }
 
     public void sendHeartbeat() throws IOException {
@@ -429,6 +434,15 @@ public class Node {
     public void sendVoteRequest() throws IOException {
         assert state == NodeState.Candidate : "Node should be candidate in order to request a vote.";
 
+        // NOTE : trace RequestVote
+        tracer.log("RequestVoteRequest");
+//        spec.commitChanges("RequestVoteRequest");
+//        specVotedFor.set(nodeInfo.name());
+
+        // NOTE : trace HandleRequestVoteRequest
+        tracer.log("HandleRequestVoteRequest");
+//        spec.commitChanges("HandleRequestVoteRequest");
+
         System.out.println("Start sending vote requests.");
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
@@ -442,6 +456,8 @@ public class Node {
             if (reduceSSflag)
                 // specMessages.apply("AddToBag", message);
 
+            // NOTE : trace RequestVote 00000000000000000000000
+             tracer.log("RequestVoteRequest");
             // spec.commitChanges("RequestVoteRequest");
             // networkManagers.get(ni.name()).send(message);
             network.send(ni.name(),message);
@@ -461,6 +477,9 @@ public class Node {
 
         // Reply to vote request
         final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
+
+        // NOTE : trace HandleRequestVoteRequest
+        tracer.log("HandleRequestVoteRequest");
         // spec.commitChanges("HandleRequestVoteRequest");
         // networkManagers.get(m.getFrom()).send(response);
         network.send(m.getFrom(),response);
@@ -481,6 +500,8 @@ public class Node {
             // specVotesGranted.add(m.getFrom());
         }
 
+        // NOTE : trace HandleRequestVoteResponse 000000000000000000000
+        tracer.log("HandleRequestVoteResponse");
         // spec.commitChanges("HandleRequestVoteResponse");
 
         // Note: BUG
@@ -507,10 +528,11 @@ public class Node {
             // specMatchIndex.getField(ni.name()).set(0);
         }
 
-        // spec.commitChanges("BecomeLeader");
+        // NOTE : trace BecomeLeader 000000000000000000000000
+        tracer.log("BecomeLeader");
     }
 
-    private void clientRequest() {
+    private void clientRequest() throws IOException {
         if (state != NodeState.Leader)
             return;
 //    /\ LET entry == [term  |-> currentTerm[i],
@@ -523,7 +545,10 @@ public class Node {
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
         // specLog.apply("AppendElement", entry);
-        commitChanges("ClientRequest");
+
+        // NOTE : trace ClientRequest 0000000000000000000000
+        tracer.log("ClientRequest");
+//        commitChanges("ClientRequest");
     }
 
     private void appendEntries() throws IOException {
@@ -556,12 +581,16 @@ public class Node {
         final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, msgCommitIndex, 0);
         // specMessages.apply("AddToBag", appendEntriesRequest);
         System.out.println(appendEntriesRequest);
+
+        // NOTE : trace AppendEntries 000000000000000000000000
+        tracer.log("AppendEntries");
         // spec.commitChanges("AppendEntries");
+
         // networkManagers.get(nodeName).send(appendEntriesRequest);
         network.send(nodeName,appendEntriesRequest);
     }
 
-    private void advanceCommitIndex() {
+    private void advanceCommitIndex() throws IOException {
 
         if (state != NodeState.Leader)
             return;
@@ -572,7 +601,7 @@ public class Node {
 
             long nbAgree = clusterInfo.getNodes().stream().filter(nodeInfo -> !nodeInfo.name().equals(this.nodeInfo.name()) && leaderState.getMatchIndexes().get(nodeInfo.name()) >= finalI).count() + 1;
 
-            // Note: BUG
+            // TEST : BUG
             if (nbAgree > clusterInfo.getQuorum())
             {
                 maxAgreeIndex = i;
@@ -586,7 +615,9 @@ public class Node {
         }
 
         // specCommitIndex.set(commitIndex);
-        commitChanges("AdvanceCommitIndex");
+        // NOTE : trace AdvanceCommitIndex 00000000000000000000
+        tracer.log("AdvanceCommitIndex");
+//        commitChanges("AdvanceCommitIndex");
     }
 
     private void handleAppendEntriesRequest(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -607,6 +638,8 @@ public class Node {
         if (state == NodeState.Candidate) {
             if (appendEntriesRequest.getTerm() == term)
                 toFollower();
+            // NOTE : trace HandleAppendEntriesRequest 00000000000000000000000000
+            tracer.log("HandleAppendEntriesRequest");
             // spec.commitChanges("HandleAppendEntriesRequest");
         }
         else if (state == NodeState.Follower) {
@@ -618,7 +651,9 @@ public class Node {
 
         System.out.printf("--- NODE %s ENTRIES %s.\n", nodeInfo.name(), logs);
 
-        //².commitChanges("HandleAppendEntriesRequest");
+        // NOTE : trace HandleAppendEntriesRequest 00000000000000000000000000000000
+        tracer.log("HandleAppendEntriesRequest");
+        //commitChanges("HandleAppendEntriesRequest");
     }
 
     private void acceptAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -649,6 +684,9 @@ public class Node {
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
             // specMessages.apply("AddToBag", appendEntriesResponse);
             // specMessages.apply("RemoveFromBag", appendEntriesRequest);
+
+            // NOTE : trace HandleAppendEntriesRequest 0000000000000000000
+            tracer.log("HandleAppendEntriesRequest");
             // spec.commitChanges("HandleAppendEntriesRequest");
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
@@ -667,6 +705,9 @@ public class Node {
             System.out.print("Conflict.\n");
             logs.remove(logs.size() - 1);
             //specLog.apply("RemoveElementAt", logs.size() - 1);
+
+            // NOTE : trace HandleAppendEntriesRequest 00000000000000000000
+            tracer.log("HandleAppendEntriesRequest");
             // spec.commitChanges("HandleAppendEntriesRequest");
         }
 
@@ -675,6 +716,9 @@ public class Node {
             System.out.print("No conflict.\n");
             logs.addAll(appendEntriesRequest.getEntries());
             // specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
+
+            // NOTE : trace HandleAppendEntriesRequest 0000000000000000000000000
+            tracer.log("HandleAppendEntriesRequest");
             // spec.commitChanges("HandleAppendEntriesRequest");
         }
     }
@@ -709,6 +753,9 @@ public class Node {
             leaderState.getNextIndexes().put(fromNodeName, Math.max(nextIndex - 1, 1));
         }
 
+
+        // NOTE : trace HandleAppendEntriesResponse
+        tracer.log("HandleAppendEntriesResponse");
         // spec.commitChanges("HandleAppendEntriesResponse");
 
         // Advance index
@@ -722,6 +769,9 @@ public class Node {
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
         // specMessages.apply("AddToBag", appendEntriesResponse);
         // specMessages.apply("RemoveFromBag", appendEntriesRequest);
+
+        // NOTE : trace HandleAppendEntriesRequest 000000000000000000000
+        tracer.log("HandleAppendEntriesRequest");
         // spec.commitChanges("HandleAppendEntriesRequest");
         network.send(to, appendEntriesResponse);
     }

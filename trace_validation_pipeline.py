@@ -2,14 +2,15 @@ import subprocess
 import run_impl
 import trace_merger
 import tla_trace_validation
-import clean
 import argparse
 import ndjson
 import os
 
+
 def read_json(filename):
     with open(filename) as f:
         return ndjson.load(f)
+
 
 # Get files to be merged from the config file.
 # Should be adapted to the specific format of the config file.
@@ -19,6 +20,7 @@ def get_files(config):
         if "Server" in line:
             files += [server + ".ndjson" for server in line["Server"]]
     return files
+
 
 parser = argparse.ArgumentParser("")
 parser.add_argument('-c', '--compile', type=bool, action=argparse.BooleanOptionalAction)
@@ -51,4 +53,4 @@ trace_merger.run(files, sort=True, remove_meta=True, out="trace.ndjson", config=
 
 # Validate trace
 print("# Start TLA+ trace spec.\n")
-tla_trace_validation.run_tla("spec/raftTrace.tla","trace.ndjson","conf.ndjson")
+tla_trace_validation.run_tla("spec/raftTrace.tla", "trace.ndjson", "conf.ndjson")

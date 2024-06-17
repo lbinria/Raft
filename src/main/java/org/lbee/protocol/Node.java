@@ -197,37 +197,48 @@ public class Node {
     private void restart() throws InterruptedException, IOException {
         System.out.printf("Node %s restarted.\n", nodeInfo.name());
 
-//    /\ state'          = [state EXCEPT ![i] = Follower]                   (0)
-//    /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]                (1)
-//    /\ votesGranted'   = [votesGranted EXCEPT ![i] = {}]                  (2)
-//    /\ nextIndex'      = [nextIndex EXCEPT ![i] = [j \in Server |-> 1]]   (3)
-//    /\ matchIndex'     = [matchIndex EXCEPT ![i] = [j \in Server |-> 0]]  (4)
-//    /\ commitIndex'    = [commitIndex EXCEPT ![i] = 0]                    (5)
+//    /\ state'          = [state EXCEPT ![i] = Follower]
+//    /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]
+//    /\ votesGranted'   = [votesGranted EXCEPT ![i] = {}]
+//    /\ nextIndex'      = [nextIndex EXCEPT ![i] = [j \in Server |-> 1]]
+//    /\ matchIndex'     = [matchIndex EXCEPT ![i] = [j \in Server |-> 0]]
+//    /\ commitIndex'    = [commitIndex EXCEPT ![i] = 0]
 
-        toFollower(); // (0)
-//        traceState.update(state.toString()); // (0)
+        toFollower();
+
+        // PARAM : state'
+        String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+        this.traceState.getField(this.nodeInfo.name()).update(stateString);
+        
+        // PARAM : votesResponded'
+        this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
+
+        // PARAM : votesGranted'
+        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
+
 
         if (candidateState != null) {
-            candidateState.clear(); // (1) (2)
-//            traceVotesResponded.update(new ArrayList<>(candidateState.getResponded())); // (1)
-//            traceVotesGranted.update(new ArrayList<>(candidateState.getGranted())); // (2)
+            candidateState.clear();
         }
         else if (leaderState != null) {
             leaderState.clear();
             for (NodeInfo ni : clusterInfo.getNodes()) {
-                leaderState.getNextIndexes().put(ni.name(), 1); // (3)
-                leaderState.getMatchIndexes().put(ni.name(), 0); // (4)
-//                traceNextIndex.update(ni.name() + " -> 1"); // (3)
-//                traceMatchIndex.update(ni.name() + " -> 0"); // (4)
+                leaderState.getNextIndexes().put(ni.name(), 1);
+                leaderState.getMatchIndexes().put(ni.name(), 0);
+
+                // PARAM : parameter nextIndex'
+                this.traceNextIndex.getField(this.nodeInfo.name()).update(1);
+
+                // PARAM : parameter matchIndex'
+                this.traceMatchIndex.getField(this.nodeInfo.name()).update(0);
+            
             }
         }
 
-        commitIndex = 0; // (5)
-//        traceCommitIndex.update(0); // (5)
+        commitIndex = 0;
 
-
-        // BUG : here
-        //this.traceState.update(this.state.toString().toLowerCase(Locale.ROOT));
+        // PARAM : parameter commitIndex'
+        this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
 
         // OK : trace Restart
         tracer.log("Restart", new Object[] { nodeInfo.name() });
@@ -345,6 +356,20 @@ public class Node {
 
         // Add term
         term += 1; // because of new election
+
+        /* Timeout(i) == /\ state[i] \in {Follower, Candidate}
+              /\ state' = [state EXCEPT ![i] = Candidate]
+              /\ currentTerm' = [currentTerm EXCEPT ![i] = currentTerm[i] + 1]
+              \* Most implementations would probably just set the local vote
+              \* atomically, but messaging localhost for it is weaker.
+              /\ votedFor' = [votedFor EXCEPT ![i] = Nil]
+              /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]
+              /\ votesGranted'   = [votesGranted EXCEPT ![i] = {}]
+              /\ UNCHANGED <<messages, leaderVars, logVars>> */
+
+        // PARAM : state'
+        String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+        this.traceState.getField(this.nodeInfo.name()).update(stateString);
 
         // NOTE : trace Timeout
         tracer.log("Timeout", new Object[] { nodeInfo.name() });

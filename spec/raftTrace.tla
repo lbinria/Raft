@@ -115,18 +115,30 @@ IsBecomeLeader ==
 IsHandleRequestVoteRequest ==
     /\ IsEvent("HandleRequestVoteRequest")
     /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        /\ m.mtype = RequestVoteRequest
-        /\ HandleRequestVoteRequest(i, j, m)
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            /\ logline.event_args[1] = m.mdest
+            /\ logline.event_args[2] = m.msource
+            /\ m.mtype = RequestVoteRequest
+            /\ HandleRequestVoteRequest(logline.event_args[1],logline.event_args[2],m)
+        ELSE
+            LET i == m.mdest
+            j == m.msource IN
+            /\ m.mtype = RequestVoteRequest
+            /\ HandleRequestVoteRequest(i, j, m)
 
 IsHandleRequestVoteResponse ==
     /\ IsEvent("HandleRequestVoteResponse")
     /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        /\ m.mtype = RequestVoteResponse
-        /\ HandleRequestVoteResponse(i, j, m)
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            /\ logline.event_args[1] = m.mdest
+            /\ logline.event_args[2] = m.msource
+            /\ m.mtype = RequestVoteResponse
+            /\ HandleRequestVoteResponse(logline.event_args[1],logline.event_args[2],m)
+        ELSE
+            LET i == m.mdest
+            j == m.msource IN
+            /\ m.mtype = RequestVoteResponse
+            /\ HandleRequestVoteResponse(i, j, m)
 
 IsUpdateTerm ==
     /\ IsEvent("UpdateTerm")

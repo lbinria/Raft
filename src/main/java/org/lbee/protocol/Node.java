@@ -211,10 +211,10 @@ public class Node {
         this.traceState.getField(this.nodeInfo.name()).update(stateString);
         
         // PARAM : votesResponded'
-        this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
+        //this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
 
         // PARAM : votesGranted'
-        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
+        //this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
 
 
         if (candidateState != null) {
@@ -227,10 +227,10 @@ public class Node {
                 leaderState.getMatchIndexes().put(ni.name(), 0);
 
                 // PARAM : parameter nextIndex'
-                this.traceNextIndex.getField(this.nodeInfo.name()).update(1);
+                //this.traceNextIndex.getField(this.nodeInfo.name()).update(1);
 
                 // PARAM : parameter matchIndex'
-                this.traceMatchIndex.getField(this.nodeInfo.name()).update(0);
+                //this.traceMatchIndex.getField(this.nodeInfo.name()).update(0);
             
             }
         }
@@ -238,7 +238,7 @@ public class Node {
         commitIndex = 0;
 
         // PARAM : parameter commitIndex'
-        this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
+        //this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
 
         // OK : trace Restart
         tracer.log("Restart", new Object[] { nodeInfo.name() });
@@ -371,13 +371,27 @@ public class Node {
         String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
         this.traceState.getField(this.nodeInfo.name()).update(stateString);
 
-        // NOTE : trace Timeout
+        // PARAM : currentTerm'
+       /* this.traceCurrentTerm.getField(this.nodeInfo.name()).update(term);
+
+        // PARAM : votedFor' (TEMPORAIRE POUR ALLEGER LA TRACE)
+        this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
+
+        // PARAM : votesResponded'
+        this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
+
+        // PARAM : votesGranted'
+        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();*/
+
+        // OK : trace Timeout
         tracer.log("Timeout", new Object[] { nodeInfo.name() });
 
-        // Comment or uncomment line below doesn't change the size of state space
-//        specCurrentTerm.apply("Add", 1);
-
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
+
+
+        tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
 
         // Simulate message exchange between this node and himself (see in raft spec, localhost exchange messages with itself)
 
@@ -390,10 +404,9 @@ public class Node {
 //        }
 
         // NOTE : trace RequestVoteResponse -> ne devrait pas exister
-//        tracer.log("RequestVoteResponse");
+        //tracer.log("RequestVoteResponse", new Object[] { nodeInfo.name(), nodeInfo.name() });
 //        specVotesGranted.add(nodeInfo.name());
 //        spec.commitChanges("HandleRequestVoteResponse");
-
 
         sendVoteRequest();
     }
@@ -466,30 +479,45 @@ public class Node {
     public void sendVoteRequest() throws IOException {
         assert state == NodeState.Candidate : "Node should be candidate in order to request a vote.";
 
-        // NOTE : trace RequestVote
-        tracer.log("RequestVoteRequest");
+/* Candidate i sends j a RequestVote request.
+    RequestVote(i, j) ==
+        /\ state[i] = Candidate
+        /\ j \notin votesResponded[i]
+        /\ Send([mtype         |-> RequestVoteRequest,
+                mterm         |-> currentTerm[i],
+                mlastLogTerm  |-> LastTerm(log[i]),
+                mlastLogIndex |-> Len(log[i]),
+                msource       |-> i,
+                mdest         |-> j])
+        /\ UNCHANGED <<serverVars, candidateVars, leaderVars, logVars>> */
+
+        
+        
 //        spec.commitChanges("RequestVoteRequest");
 //        specVotedFor.set(nodeInfo.name());
 
         // NOTE : trace HandleRequestVoteRequest
-        tracer.log("HandleRequestVoteRequest");
+        //tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
 //        spec.commitChanges("HandleRequestVoteRequest");
 
         System.out.println("Start sending vote requests.");
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
 
+            // BUG
             // Skip vote request for node that responded
-            if (ni.name().equals(nodeInfo.name()) || candidateState.getResponded().contains(ni.name()))
+            if (ni.name().equals(nodeInfo.name()) || candidateState.getResponded().contains(ni.name())){
                 continue;
+            }
 
             final Message message = new RequestVoteRequest(nodeInfo.name(), ni.name(), term, getLastLogTerm(), getLastLogIndex(),0);
 
             if (reduceSSflag)
                 // specMessages.apply("AddToBag", message);
 
-            // NOTE : trace RequestVote PROBLEM
-             tracer.log("RequestVoteRequest");
+            // OK : trace RequestVote
+            tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),ni.name()});
+
             // spec.commitChanges("RequestVoteRequest");
             // networkManagers.get(ni.name()).send(message);
             network.send(ni.name(),message);
@@ -502,16 +530,20 @@ public class Node {
         boolean logOk = m.getLastLogTerm() > getLastLogTerm() || m.getLastLogTerm() == getLastLogTerm() && m.getLastLogIndex() >= getLastLogIndex();
         boolean grant = m.getTerm() == term && logOk && (votedFor.equals(m.getFrom()) || votedFor.equals(""));
 
-        if (m.getTerm() <= term && grant) {
-            votedFor = m.getFrom();
-            // specVotedFor.set(votedFor);
+        
+
+        if (m.getTerm() <= term) {
+            if (grant) {
+                tracer.log("HandleRequestVoteRequest", new Object[] {m.getFrom(),nodeInfo.name()});
+            } else if (m.getTerm() == term) {
+                tracer.log("HandleRequestVoteResponse", new Object[] {m.getFrom(),nodeInfo.name()});
+            }
         }
 
         // Reply to vote request
         final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
 
-        // NOTE : trace HandleRequestVoteRequest
-        tracer.log("HandleRequestVoteRequest");
+        
         // spec.commitChanges("HandleRequestVoteRequest");
         // networkManagers.get(m.getFrom()).send(response);
         network.send(m.getFrom(),response);
@@ -532,11 +564,28 @@ public class Node {
             // specVotesGranted.add(m.getFrom());
         }
 
+       /*  HandleRequestVoteResponse(i, j, m) ==
+            /\ m.mterm = currentTerm[i]
+            /\ votesResponded' = [votesResponded EXCEPT ![i] = votesResponded[i] \cup {j}]
+            /\ \/ /\ m.mvoteGranted
+                /\ votesGranted' = [votesGranted EXCEPT ![i] =
+                                        votesGranted[i] \cup {j}]
+            \/ /\ ~m.mvoteGranted
+                /\ UNCHANGED <<votesGranted(*, voterLog *)>>
+            /\ Discard(m)
+            /\ UNCHANGED <<serverVars, votedFor, leaderVars, logVars>> */
+
+        // m.mterm = currentTerm[i]
+        assert m.getTerm() == term : "Term should be the same.";
+
+        // PARAM : votesResponded' (/\ votesResponded' = [votesResponded EXCEPT ![i] = votesResponded[i] \cup {j}])
+        //this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
+
         // NOTE : trace HandleRequestVoteResponse PROBLEM
-        tracer.log("HandleRequestVoteResponse");
+        //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
         // spec.commitChanges("HandleRequestVoteResponse");
 
-        // Note: BUG
+        // Note: BUG -> Quorum == {i \in SUBSET(Server) : Cardinality(i) * 2 > Cardinality(Server)}
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
             becomeLeader();
         }
@@ -544,6 +593,30 @@ public class Node {
 
     // TLA:BecomeLeader
     public void becomeLeader() throws IOException {
+
+        /* BecomeLeader(i) ==
+            /\ state[i] = Candidate
+            /\ votesGranted[i] \in Quorum
+            /\ state'      = [state EXCEPT ![i] = Leader]
+            /\ nextIndex'  = [nextIndex EXCEPT ![i] =
+                                [j \in Server |-> Len(log[i]) + 1]]
+            /\ matchIndex' = [matchIndex EXCEPT ![i] =
+                                [j \in Server |-> 0]]
+            /\ elections'  = elections \cup
+                                {[eterm     |-> currentTerm[i],
+                                eleader   |-> i,
+                                elog      |-> log[i],
+                                evotes    |-> votesGranted[i](*,
+                                evoterLog |-> voterLog[i] *)]}
+            /\ UNCHANGED <<messages, currentTerm, votedFor, candidateVars, logVars>> */
+
+
+        
+
+        // BUG : trace BecomeLeader
+        tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
+
+
         // Note: weird ! assertion doesn't trigger when node is leader, it seems like it doesn't check == Candidate
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
         assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";

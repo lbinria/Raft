@@ -391,7 +391,7 @@ public class Node {
 
         tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
-        //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
 
         // Simulate message exchange between this node and himself (see in raft spec, localhost exchange messages with itself)
 
@@ -452,7 +452,7 @@ public class Node {
         votedFor = "";
 
         // NOTE : trace UpdateTerm PROBLEM
-//        tracer.log("UpdateTerm");
+        tracer.log("UpdateTerm");
 //        commitChanges("UpdateTerm");
     }
 
@@ -515,7 +515,7 @@ public class Node {
             if (reduceSSflag)
                 // specMessages.apply("AddToBag", message);
 
-            // OK : trace RequestVote
+            // OK : trace RequestVote (source=candidate, dest=other_nodes)
             tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),ni.name()});
 
             // spec.commitChanges("RequestVoteRequest");
@@ -530,13 +530,14 @@ public class Node {
         boolean logOk = m.getLastLogTerm() > getLastLogTerm() || m.getLastLogTerm() == getLastLogTerm() && m.getLastLogIndex() >= getLastLogIndex();
         boolean grant = m.getTerm() == term && logOk && (votedFor.equals(m.getFrom()) || votedFor.equals(""));
 
-        
+        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom()});
+        tracer.log("HandleRequestVoteResponse", new Object[] {m.getFrom(),nodeInfo.name()});
 
         if (m.getTerm() <= term) {
             if (grant) {
-                tracer.log("HandleRequestVoteRequest", new Object[] {m.getFrom(),nodeInfo.name()});
+                
             } else if (m.getTerm() == term) {
-                tracer.log("HandleRequestVoteResponse", new Object[] {m.getFrom(),nodeInfo.name()});
+                //tracer.log("HandleRequestVoteResponse", new Object[] {m.getFrom(),nodeInfo.name()});
             }
         }
 
@@ -582,6 +583,8 @@ public class Node {
         //this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
 
         // NOTE : trace HandleRequestVoteResponse PROBLEM
+        //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
+
         //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
         // spec.commitChanges("HandleRequestVoteResponse");
 

@@ -118,5 +118,9 @@ modules.xml
 # Specific files
 !instrumentation-1.0.jar
 *.clock
-*.ndjson.conf
+
+# Ignore all .ndjson files
 *.ndjson
+
+# Except for conf.ndjson
+!conf.ndjson

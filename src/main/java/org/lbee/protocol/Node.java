@@ -305,14 +305,6 @@ public class Node {
         }, 3000);
 
         while (!shutdown) {
-            /**
-             * 1 - si je suis leader, j'envoie un heartbeat toutes les 500ms
-             * 2 - si je suis follower ou candidat et que je n'ai pas reçu de heartbeat depuis un certain temps, je déclenche une nouvelle élection
-             * 3 - je prends les messages (peu importe si je suis leader, follower ou candidat)
-             * 4 - j'affiche le log de temps en temps
-             * 5 - je simule une requête client à ce noeud (si je suis leader)
-             */
-
             // Leader sends heartbeat every 500ms
             sendHeartbeatTrigger.run();
             // Start new election if it hasn+'t received heartbeat for some time
@@ -372,7 +364,7 @@ public class Node {
         this.traceState.getField(this.nodeInfo.name()).update(stateString);
 
         // PARAM : currentTerm'
-       /* this.traceCurrentTerm.getField(this.nodeInfo.name()).update(term);
+        this.traceCurrentTerm.getField(this.nodeInfo.name()).update(term);
 
         // PARAM : votedFor' (TEMPORAIRE POUR ALLEGER LA TRACE)
         this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
@@ -381,13 +373,12 @@ public class Node {
         this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
 
         // PARAM : votesGranted'
-        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();*/
+        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
 
         // OK : trace Timeout
         tracer.log("Timeout", new Object[] { nodeInfo.name() });
 
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
-
 
         tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
@@ -402,11 +393,6 @@ public class Node {
 //            final Message fakeMessage = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
 ////            specMessages.apply("AddToBag", fakeMessage);
 //        }
-
-        // NOTE : trace RequestVoteResponse -> ne devrait pas exister
-        //tracer.log("RequestVoteResponse", new Object[] { nodeInfo.name(), nodeInfo.name() });
-//        specVotesGranted.add(nodeInfo.name());
-//        spec.commitChanges("HandleRequestVoteResponse");
 
         sendVoteRequest();
     }
@@ -444,16 +430,14 @@ public class Node {
 
     }
 
-
     // TLA UpdateTerm
     private void updateTerm(long newTerm) throws IOException {
         term = newTerm;
         toFollower();
         votedFor = "";
 
-        // NOTE : trace UpdateTerm PROBLEM
+        // OK : trace UpdateTerm
         tracer.log("UpdateTerm");
-//        commitChanges("UpdateTerm");
     }
 
     public void sendHeartbeat() throws IOException {
@@ -504,7 +488,6 @@ public class Node {
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
 
-            // BUG
             // Skip vote request for node that responded
             if (ni.name().equals(nodeInfo.name()) || candidateState.getResponded().contains(ni.name())){
                 continue;
@@ -515,7 +498,7 @@ public class Node {
             if (reduceSSflag)
                 // specMessages.apply("AddToBag", message);
 
-            // OK : trace RequestVote (source=candidate, dest=other_nodes)
+            // OK : trace RequestVote
             tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),ni.name()});
 
             // spec.commitChanges("RequestVoteRequest");
@@ -530,8 +513,8 @@ public class Node {
         boolean logOk = m.getLastLogTerm() > getLastLogTerm() || m.getLastLogTerm() == getLastLogTerm() && m.getLastLogIndex() >= getLastLogIndex();
         boolean grant = m.getTerm() == term && logOk && (votedFor.equals(m.getFrom()) || votedFor.equals(""));
 
+        // OK : trace HandleRequestVoteRequest
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom()});
-        tracer.log("HandleRequestVoteResponse", new Object[] {m.getFrom(),nodeInfo.name()});
 
         if (m.getTerm() <= term) {
             if (grant) {
@@ -544,9 +527,6 @@ public class Node {
         // Reply to vote request
         final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
 
-        
-        // spec.commitChanges("HandleRequestVoteRequest");
-        // networkManagers.get(m.getFrom()).send(response);
         network.send(m.getFrom(),response);
     }
 
@@ -582,11 +562,8 @@ public class Node {
         // PARAM : votesResponded' (/\ votesResponded' = [votesResponded EXCEPT ![i] = votesResponded[i] \cup {j}])
         //this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
 
-        // NOTE : trace HandleRequestVoteResponse PROBLEM
-        //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
-
-        //tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
-        // spec.commitChanges("HandleRequestVoteResponse");
+        // OK : trace HandleRequestVoteResponse
+        tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
 
         // Note: BUG -> Quorum == {i \in SUBSET(Server) : Cardinality(i) * 2 > Cardinality(Server)}
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
@@ -613,12 +590,8 @@ public class Node {
                                 evoterLog |-> voterLog[i] *)]}
             /\ UNCHANGED <<messages, currentTerm, votedFor, candidateVars, logVars>> */
 
-
-        
-
-        // BUG : trace BecomeLeader
+        // OK : trace BecomeLeader
         tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
-
 
         // Note: weird ! assertion doesn't trigger when node is leader, it seems like it doesn't check == Candidate
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
@@ -650,14 +623,16 @@ public class Node {
 //        newLog == Append(log[i], entry)
 //        IN  log' = [log EXCEPT ![i] = newLog]
 
-        final Entry entry = new Entry(term, Helpers.pickRandomVal(configuration));
+        String entry_value = Helpers.pickRandomVal(configuration);
+
+        final Entry entry = new Entry(term, entry_value);
         logs.add(entry);
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
         // specLog.apply("AppendElement", entry);
 
-        // NOTE : trace ClientRequest PROBLEM
-//        tracer.log("ClientRequest");
+        // Note : trace ClientRequest PROBLEM
+        tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
 //        commitChanges("ClientRequest");
     }
 

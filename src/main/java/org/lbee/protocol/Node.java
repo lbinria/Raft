@@ -629,19 +629,21 @@ public class Node {
         logs.add(entry);
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
-        // specLog.apply("AppendElement", entry);
 
-        // Note : trace ClientRequest PROBLEM
+        // OK : trace ClientRequest
         tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
-//        commitChanges("ClientRequest");
     }
 
     private void appendEntries() throws IOException {
         assert state == NodeState.Leader : "Only leader can send append entries requests.";
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
-            if (!ni.name().equals(nodeInfo.name()))
+            if (!ni.name().equals(nodeInfo.name())){
                 appendEntries(ni.name());
+
+                // OK : trace AppendEntries
+                tracer.log("AppendEntries", new Object[] { nodeInfo.name(), ni.name() });
+            }
         }
     }
 

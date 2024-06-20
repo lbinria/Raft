@@ -159,11 +159,20 @@ IsClientRequest ==
 
 IsAppendEntries ==
     /\ IsEvent("AppendEntries")
-    /\ \E m \in DOMAIN messages :
-    (* TODO benjamin check, source, dest may be inverted, moreover I think I should use \E i,j \in Server instead of messages *)
+    (* /\ \E m \in DOMAIN messages :
+=== TODO benjamin check, source, dest may be inverted, moreover I think I should use \E i,j \in Server instead of messages
         LET i == m.mdest
         j == m.msource IN
-        AppendEntries(i, j)
+        AppendEntries(i, j) *)
+    /\ \E m \in DOMAIN messages :
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            /\ logline.event_args[1] = m.mdest
+            /\ logline.event_args[2] = m.msource
+            /\ AppendEntries(logline.event_args[1],logline.event_args[2])
+        ELSE
+            LET i == m.mdest
+            j == m.msource IN
+            /\ AppendEntries(i, j)
 
 IsAdvanceCommitIndex ==
     /\ IsEvent("AdvanceCommitIndex")

@@ -197,13 +197,6 @@ public class Node {
     private void restart() throws InterruptedException, IOException {
         System.out.printf("Node %s restarted.\n", nodeInfo.name());
 
-//    /\ state'          = [state EXCEPT ![i] = Follower]
-//    /\ votesResponded' = [votesResponded EXCEPT ![i] = {}]
-//    /\ votesGranted'   = [votesGranted EXCEPT ![i] = {}]
-//    /\ nextIndex'      = [nextIndex EXCEPT ![i] = [j \in Server |-> 1]]
-//    /\ matchIndex'     = [matchIndex EXCEPT ![i] = [j \in Server |-> 0]]
-//    /\ commitIndex'    = [commitIndex EXCEPT ![i] = 0]
-
         toFollower();
 
         // PARAM : state'
@@ -211,10 +204,10 @@ public class Node {
         this.traceState.getField(this.nodeInfo.name()).update(stateString);
         
         // PARAM : votesResponded'
-        //this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
+        this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
 
         // PARAM : votesGranted'
-        //this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
+        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
 
 
         if (candidateState != null) {
@@ -227,10 +220,10 @@ public class Node {
                 leaderState.getMatchIndexes().put(ni.name(), 0);
 
                 // PARAM : parameter nextIndex'
-                //this.traceNextIndex.getField(this.nodeInfo.name()).update(1);
+                this.traceNextIndex.getField(this.nodeInfo.name()).update(1);
 
                 // PARAM : parameter matchIndex'
-                //this.traceMatchIndex.getField(this.nodeInfo.name()).update(0);
+                this.traceMatchIndex.getField(this.nodeInfo.name()).update(0);
             
             }
         }
@@ -238,7 +231,7 @@ public class Node {
         commitIndex = 0;
 
         // PARAM : parameter commitIndex'
-        //this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
+        this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
 
         // OK : trace Restart
         tracer.log("Restart", new Object[] { nodeInfo.name() });
@@ -480,10 +473,6 @@ public class Node {
 //        spec.commitChanges("RequestVoteRequest");
 //        specVotedFor.set(nodeInfo.name());
 
-        // NOTE : trace HandleRequestVoteRequest
-        //tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
-//        spec.commitChanges("HandleRequestVoteRequest");
-
         System.out.println("Start sending vote requests.");
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
@@ -601,9 +590,6 @@ public class Node {
 
         toLeader();
 
-        // NOTE : trace BecomeLeader PROBLEM
-//        tracer.log("BecomeLeader");
-
         sendHeartbeat();
         System.out.printf("Node %s is Leader.\n", nodeInfo.name());
 
@@ -669,8 +655,8 @@ public class Node {
         // specMessages.apply("AddToBag", appendEntriesRequest);
         System.out.println(appendEntriesRequest);
 
-        // NOTE : trace AppendEntries PROBLEM
-//        tracer.log("AppendEntries");
+        // OK : trace AppendEntries PROBLEM
+        tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });
         // spec.commitChanges("AppendEntries");
 
         // networkManagers.get(nodeName).send(appendEntriesRequest);
@@ -701,10 +687,8 @@ public class Node {
             commitIndex = maxAgreeIndex;
         }
 
-        // specCommitIndex.set(commitIndex);
-        // NOTE : trace AdvanceCommitIndex PROBLEM
-//        tracer.log("AdvanceCommitIndex");
-//        commitChanges("AdvanceCommitIndex");
+        // OK : trace AdvanceCommitIndex
+        tracer.log("AdvanceCommitIndex", new Object[] { nodeInfo.name() });
     }
 
     private void handleAppendEntriesRequest(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -723,11 +707,11 @@ public class Node {
 
         // Return to follower state
         if (state == NodeState.Candidate) {
-            if (appendEntriesRequest.getTerm() == term)
+            if (appendEntriesRequest.getTerm() == term){
                 toFollower();
-            // NOTE : trace HandleAppendEntriesRequest PROBLEM
-//            tracer.log("HandleAppendEntriesRequest");
-            // spec.commitChanges("HandleAppendEntriesRequest");
+                // OK : trace HandleAppendEntriesRequest
+                tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+            }
         }
         else if (state == NodeState.Follower) {
             if (appendEntriesRequest.getTerm() == term && logOk)
@@ -738,8 +722,8 @@ public class Node {
 
         System.out.printf("--- NODE %s ENTRIES %s.\n", nodeInfo.name(), logs);
 
-        // NOTE : trace HandleAppendEntriesRequest PROBLEM
-//        tracer.log("HandleAppendEntriesRequest");
+        // OK : trace HandleAppendEntriesRequest
+        tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
         //commitChanges("HandleAppendEntriesRequest");
     }
 
@@ -772,8 +756,8 @@ public class Node {
             // specMessages.apply("AddToBag", appendEntriesResponse);
             // specMessages.apply("RemoveFromBag", appendEntriesRequest);
 
-            // NOTE : trace HandleAppendEntriesRequest PROBLEM
-//            tracer.log("HandleAppendEntriesRequest");
+            // OK : trace HandleAppendEntriesRequest
+            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             // spec.commitChanges("HandleAppendEntriesRequest");
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
@@ -793,8 +777,8 @@ public class Node {
             logs.remove(logs.size() - 1);
             //specLog.apply("RemoveElementAt", logs.size() - 1);
 
-            // NOTE : trace HandleAppendEntriesRequest PROBLEM
-//            tracer.log("HandleAppendEntriesRequest");
+            // OK : trace HandleAppendEntriesRequest
+            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             // spec.commitChanges("HandleAppendEntriesRequest");
         }
 
@@ -804,8 +788,8 @@ public class Node {
             logs.addAll(appendEntriesRequest.getEntries());
             // specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
 
-            // NOTE : trace HandleAppendEntriesRequest PROBLEM
-//            tracer.log("HandleAppendEntriesRequest");
+            // OK : trace HandleAppendEntriesRequest
+            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             // spec.commitChanges("HandleAppendEntriesRequest");
         }
     }
@@ -841,9 +825,8 @@ public class Node {
         }
 
 
-        // NOTE : trace HandleAppendEntriesResponse PROBLEM
-//        tracer.log("HandleAppendEntriesResponse");
-        // spec.commitChanges("HandleAppendEntriesResponse");
+        // OK : trace HandleAppendEntriesResponse
+        tracer.log("HandleAppendEntriesResponse", new Object[] { nodeInfo.name(), fromNodeName });
 
         // Advance index
         advanceCommitIndex();
@@ -857,9 +840,9 @@ public class Node {
         // specMessages.apply("AddToBag", appendEntriesResponse);
         // specMessages.apply("RemoveFromBag", appendEntriesRequest);
 
-        // NOTE : trace HandleAppendEntriesRequest PROBLEM
-//        tracer.log("HandleAppendEntriesRequest");
-        // spec.commitChanges("HandleAppendEntriesRequest");
+        // OK : trace HandleAppendEntriesRequest
+        tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), to });
+
         network.send(to, appendEntriesResponse);
     }
 

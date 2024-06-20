@@ -176,28 +176,59 @@ IsAppendEntries ==
 
 IsAdvanceCommitIndex ==
     /\ IsEvent("AdvanceCommitIndex")
-    /\
+    (* /\
         \/
             /\ "node" \in DOMAIN logline
             /\ AdvanceCommitIndex(logline.node)
         \/
-            /\ \E i \in Server : AdvanceCommitIndex(i)
+            /\ \E i \in Server : AdvanceCommitIndex(i) *)
+    /\ \E m \in DOMAIN messages :
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            /\ logline.event_args[1] = m.mdest
+            /\ AdvanceCommitIndex(logline.event_args[1])
+        ELSE
+            LET i == m.mdest IN
+            /\ AdvanceCommitIndex(i)
 
 IsHandleAppendEntriesRequest ==
     /\ IsEvent("HandleAppendEntriesRequest")
-    /\ \E m \in DOMAIN messages :
+    (* /\ \E m \in DOMAIN messages :
         LET i == m.mdest
         j == m.msource IN
         /\ m.mtype = AppendEntriesRequest
-        /\ HandleAppendEntriesRequest(i, j, m)
+        /\ HandleAppendEntriesRequest(i, j, m) *)
+
+    /\ \E m \in DOMAIN messages :
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            /\ logline.event_args[1] = m.mdest
+            /\ logline.event_args[2] = m.msource
+            /\ m.mtype = AppendEntriesRequest
+            /\ HandleAppendEntriesRequest(logline.event_args[1],logline.event_args[2],m)
+        ELSE
+            LET i == m.mdest
+            j == m.msource IN
+            /\ m.mtype = AppendEntriesRequest
+            /\ HandleAppendEntriesRequest(i, j, m)
 
 IsHandleAppendEntriesResponse ==
     /\ IsEvent("HandleAppendEntriesResponse")
-    /\ \E m \in DOMAIN messages :
+    (* /\ \E m \in DOMAIN messages :
         LET i == m.mdest
         j == m.msource IN
         /\ m.mtype = AppendEntriesResponse
-        /\ HandleAppendEntriesResponse(i, j, m)
+        /\ HandleAppendEntriesResponse(i, j, m) *)
+
+    /\ \E m \in DOMAIN messages :
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            /\ logline.event_args[1] = m.mdest
+            /\ logline.event_args[2] = m.msource
+            /\ m.mtype = AppendEntriesResponse
+            /\ HandleAppendEntriesResponse(logline.event_args[1],logline.event_args[2],m)
+        ELSE
+            LET i == m.mdest
+            j == m.msource IN
+            /\ m.mtype = AppendEntriesResponse
+            /\ HandleAppendEntriesResponse(i, j, m)
 
 RATraceNext ==
     /\

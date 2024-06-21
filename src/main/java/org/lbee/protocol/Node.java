@@ -30,8 +30,7 @@ public class Node {
     // index of the log entry that is safely replicated on a majority of nodes (called quorum)
     private int commitIndex;
 
-    // Indique l'index de la dernière entrée de journal réussie pour chaque nœud suiveur.
-    // Utilisé par le leader pour déterminer quel entrée de journal peut être considérée comme engagée.
+    // For each server, index of the next log entry to send to that server (used by leader to replicate log entries)
     private long matchIndex;
 
     private long lastHeartbeat;
@@ -66,7 +65,7 @@ public class Node {
     // Election timeout
     private long electionTimeout;
 
-    // commitIndex
+    // CommitIndex
     public int getLastLogIndex() {
         return logs.size();
     }
@@ -84,7 +83,6 @@ public class Node {
     private final VirtualField traceNextIndex;
     private final VirtualField traceCommitIndex;
     private final VirtualField traceCurrentTerm;
-    private final VirtualField traceMessages;
     private final VirtualField traceLog;
 
     private boolean reduceSSflag;
@@ -95,7 +93,7 @@ public class Node {
         this.clusterInfo = configuration.getClusterInfo();
         this.nodeInfo = clusterInfo.getNode(nodeName);
 
-        this.term = 1;
+        this.term= 1;
         this.state = NodeState.Follower;
         this.logs = new ArrayList<>();
         this.randTimeout = new Random(nodeInfo.seed());
@@ -121,8 +119,6 @@ public class Node {
 
         // Initialize trace variables
         this.traceState = tracer.getVariableTracer("state");
-        //this.traceState = tracer.getVariableTracer("state").getField(this.nodeInfo.name());
-
         this.traceVotedFor = tracer.getVariableTracer("votedFor");
         this.traceVotesResponded = tracer.getVariableTracer("votesResponded");
         this.traceVotesGranted = tracer.getVariableTracer("votesGranted");
@@ -130,7 +126,6 @@ public class Node {
         this.traceMatchIndex = tracer.getVariableTracer("matchIndex");
         this.traceCommitIndex = tracer.getVariableTracer("commitIndex");
         this.traceCurrentTerm = tracer.getVariableTracer("currentTerm");
-        this.traceMessages = tracer.getVariableTracer("messages");
         this.traceLog = tracer.getVariableTracer("log");
 
         // Feature flags
@@ -139,8 +134,6 @@ public class Node {
 
     private void setState(NodeState state) {
         this.state = state;
-        // this.spec.notify(specState, SET, state.toString());
-//        this.specState.set(state.toString());
     }
 
     private void toCandidate() {
@@ -151,28 +144,6 @@ public class Node {
     private void toLeader() throws IOException {
         setState(NodeState.Leader);
 
-//        BecomeLeader(i) ==
-        //    /\ state[i] = Candidate
-        //                /\ votesGranted[i] \in Quorum
-        //    /\ state'      = [state EXCEPT ![i] = Leader]
-        //                /\ nextIndex'  = [nextIndex EXCEPT ![i] =
-        //                [j \in Server |-> Len(log[i]) + 1]]
-        //    /\ matchIndex' = [matchIndex EXCEPT ![i] =
-        //                [j \in Server |-> 0]]
-        //    /\ elections'  = elections \cup
-        //        {[eterm     |-> currentTerm[i],
-        //                eleader   |-> i,
-        //                elog      |-> log[i],
-        //                evotes    |-> votesGranted[i](*,
-        //                evoterLog |-> voterLog[i] *)]}
-        //    /\ UNCHANGED <<messages, currentTerm, votedFor, candidateVars, logVars>>
-
-//        this.traceState.update(state.toString());
-
-//        tracer.log("BecomeLeader", new Object[] { this.nodeInfo.name() });
-
-
-//        final Set<String> quorum = new HashSet<>(candidateState.getGranted());
         if (leaderState == null)
             leaderState = new LeaderState();
     }
@@ -378,20 +349,17 @@ public class Node {
 
         sendVoteRequest();
     }
-
     public void takeMessage() throws IOException {
         // Check box
         final Message message = server.getMessageBox().take(nodeInfo.name());
+        
         // No message
         if (message == null)
             return;
 
-
         // Update term first
         if (message.getTerm() > term)
             updateTerm(message.getTerm());
-
-        //specMessages.apply("RemoveFromBag", message);
 
         // Redirect according to message type
         if (message instanceof final RequestVoteRequest requestVoteRequest)
@@ -408,8 +376,6 @@ public class Node {
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
             handleAppendEntriesResponse(appendEntriesResponse);
         }
-
-
     }
 
     // TLA UpdateTerm
@@ -445,18 +411,6 @@ public class Node {
     public void sendVoteRequest() throws IOException {
         assert state == NodeState.Candidate : "Node should be candidate in order to request a vote.";
 
-/* Candidate i sends j a RequestVote request.
-    RequestVote(i, j) ==
-        /\ state[i] = Candidate
-        /\ j \notin votesResponded[i]
-        /\ Send([mtype         |-> RequestVoteRequest,
-                mterm         |-> currentTerm[i],
-                mlastLogTerm  |-> LastTerm(log[i]),
-                mlastLogIndex |-> Len(log[i]),
-                msource       |-> i,
-                mdest         |-> j])
-        /\ UNCHANGED <<serverVars, candidateVars, leaderVars, logVars>> */
-
         System.out.println("Start sending vote requests.");
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
@@ -483,16 +437,6 @@ public class Node {
 
         boolean logOk = m.getLastLogTerm() > getLastLogTerm() || m.getLastLogTerm() == getLastLogTerm() && m.getLastLogIndex() >= getLastLogIndex();
         boolean grant = m.getTerm() == term && logOk && (votedFor.equals(m.getFrom()) || votedFor.equals(""));
-
-       /*  
-        /\ m.mterm <= currentTerm[i]
-                /\  \/ grant  /\ votedFor' = [votedFor EXCEPT ![i] = j]
-                    \/ ~grant /\ UNCHANGED votedFor
-                /\ Reply([mtype         |-> RequestVoteResponse,
-                        mterm           |-> currentTerm[i],
-                        mvoteGranted    |-> grant,
-        */
-
         
         if (m.getTerm() <= term && grant) {
             // PARAM : votedFor'
@@ -540,29 +484,9 @@ public class Node {
         }
     }
 
-    // TLA:BecomeLeader
     public void becomeLeader() throws IOException {
-        /* BecomeLeader(i) ==
-            /\ state[i] = Candidate
-            /\ votesGranted[i] \in Quorum
-            /\ state'      = [state EXCEPT ![i] = Leader]
-            /\ nextIndex'  = [nextIndex EXCEPT ![i] =
-                                [j \in Server |-> Len(log[i]) + 1]]
-            /\ matchIndex' = [matchIndex EXCEPT ![i] =
-                                [j \in Server |-> 0]]
-            /\ elections'  = elections \cup
-                                {[eterm     |-> currentTerm[i],
-                                eleader   |-> i,
-                                elog      |-> log[i],
-                                evotes    |-> votesGranted[i](*,
-                                evoterLog |-> voterLog[i] *)]}
-            /\ UNCHANGED <<messages, currentTerm, votedFor, candidateVars, logVars>> */
-
-        // Note: weird ! assertion doesn't trigger when node is leader, it seems like it doesn't check == Candidate
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
         assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
-        // Note: bug found with trace validation at 57th depth
-//        assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
 
         toLeader();
 
@@ -593,10 +517,6 @@ public class Node {
     private void clientRequest() throws IOException {
         if (state != NodeState.Leader)
             return;
-//    /\ LET entry == [term  |-> currentTerm[i],
-//                value |-> v]
-//        newLog == Append(log[i], entry)
-//        IN  log' = [log EXCEPT ![i] = newLog]
 
         String entry_value = Helpers.pickRandomVal(configuration);
 
@@ -626,32 +546,38 @@ public class Node {
     }
 
     private void appendEntries(String nodeName) throws IOException {
-        // TODO optimization: when entries empty, quit
-
+        // Optimization: Return immediately if there are no entries to append
         int nextIndex = leaderState.getNextIndexes().get(nodeName);
+        if (nextIndex > logs.size()) {
+            System.out.println("No new entries to append for node: " + nodeName);
+            return;
+        }
+    
         int previousIndex = nextIndex - 1;
-        // Note >= instead of > because of discrepancy between TLA base index = 1 and java => 0
-//        prevLogTerm == IF prevLogIndex > 0 THEN
-//        log[i][prevLogIndex].term
-//        ELSE
-//        0
         long previousLogTerm = previousIndex > 0 ? logs.get(previousIndex - 1).getTerm() : 0;
-
+    
         final int lastEntryIndex = Math.min(logs.size(), nextIndex);
-
         final List<Entry> entries = logs.subList(nextIndex - 1, lastEntryIndex);
-        System.out.printf("Take entries [%s, %s]\n", nextIndex - 1, lastEntryIndex);
-
+        System.out.printf("Take entries [%d, %d] for node %s\n", nextIndex - 1, lastEntryIndex, nodeName);
+    
         int msgCommitIndex = Math.min(commitIndex, lastEntryIndex);
-        final Message appendEntriesRequest = new AppendEntriesRequest(nodeInfo.name(), nodeName, term, previousIndex, previousLogTerm, entries, msgCommitIndex, 0);
-        // specMessages.apply("AddToBag", appendEntriesRequest);
-        System.out.println(appendEntriesRequest);
-
-        // OK : trace AppendEntries
+    
+        final Message appendEntriesRequest = new AppendEntriesRequest(
+            nodeInfo.name(), 
+            nodeName, 
+            term, 
+            previousIndex, 
+            previousLogTerm, 
+            entries, 
+            msgCommitIndex, 
+            0
+        );
+    
+        System.out.println("Sending AppendEntriesRequest to node: " + nodeName);
         tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });
-
-        network.send(nodeName,appendEntriesRequest);
-    }
+    
+        network.send(nodeName, appendEntriesRequest);
+    }    
 
     private void advanceCommitIndex() throws IOException {
 
@@ -717,37 +643,20 @@ public class Node {
 
         // OK : trace HandleAppendEntriesRequest
         tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
-        //commitChanges("HandleAppendEntriesRequest");
     }
 
     private void acceptAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
         System.out.print("Accept append entries.\n");
         int index = (int)appendEntriesRequest.getLastLogIndex() + 1;
 
-        // already done with request
-        //\/ m.mentries = << >>
-        //\/ /\ m.mentries /= << >>
-        ///\ Len(log[i]) >= index
-        ///\ log[i][index].term = m.mentries[1].term
         if (appendEntriesRequest.getEntries().isEmpty() || (logs.size() >= index && logs.get(index - 1).getTerm() == appendEntriesRequest.getEntries().get(0).getTerm())) {
             System.out.print("Already done.\n");
 
-//          /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
             commitIndex = appendEntriesRequest.getCommitIndex();
-            // specCommitIndex.set(commitIndex);
-//            /\ Reply([mtype           |-> AppendEntriesResponse,
-//            mterm           |-> currentTerm[i],
-//            msuccess        |-> TRUE,
-//            mmatchIndex     |-> m.mprevLogIndex +
-//            Len(m.mentries),
-//            msource         |-> i,
-//            mdest           |-> j],
-//            m)
+            
             int matchIndex = (int)appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size();
 
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
-            // specMessages.apply("AddToBag", appendEntriesResponse);
-            // specMessages.apply("RemoveFromBag", appendEntriesRequest);
 
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
@@ -770,27 +679,31 @@ public class Node {
             logs.remove(logs.size() - 1);
             //specLog.apply("RemoveElementAt", logs.size() - 1);
 
+            // PARAM : commitIndex'
+            this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
+
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
-            // spec.commitChanges("HandleAppendEntriesRequest");
         }
 
         // No conflict append entries
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
             System.out.print("No conflict.\n");
             logs.addAll(appendEntriesRequest.getEntries());
-            // specLog.apply("AppendElement", appendEntriesRequest.getEntries().get(0));
+            
+            /* log' = [log EXCEPT ![i] =
+                                      Append(log[i], m.mentries[1])] */               
 
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
-            // spec.commitChanges("HandleAppendEntriesRequest");
         }
     }
 
     private void handleAppendEntriesResponse(AppendEntriesResponse appendEntriesResponse) throws IOException {
         System.out.printf("handleAppendEntriesResponse %s.\n", appendEntriesResponse);
-// TODO parameters
-        /*
+
+// TODO : parameters
+/*
         /\ m.mterm = currentTerm[i]
         /\ \/ /\ m.msuccess \* successful
               /\ nextIndex'  = [nextIndex  EXCEPT ![i][j] = m.mmatchIndex + 1]
@@ -802,7 +715,6 @@ public class Node {
         /\ Discard(m)
         /\ UNCHANGED <<serverVars, candidateVars, logVars, elections>>
 */
-
 
         if (appendEntriesResponse.getTerm() != term)
             return;
@@ -833,7 +745,6 @@ public class Node {
 
         // Advance index
         advanceCommitIndex();
-
     }
 
     private void rejectAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
@@ -860,13 +771,4 @@ public class Node {
      * @return True if manager has been shutdown
      */
     public boolean isShutdown() { return shutdown; }
-
-    private void commitChanges(String description) {
-//        try {
-//            // spec.commitChanges(description);
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
-    }
-
 }

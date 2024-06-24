@@ -485,6 +485,7 @@ public class Node {
     }
 
     public void becomeLeader() throws IOException {
+
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
         assert candidateState.getGranted().size() > clusterInfo.getQuorum() : "A candidate should have a minimum of vote to become a leader.";
 
@@ -660,7 +661,7 @@ public class Node {
 
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
-            // spec.commitChanges("HandleAppendEntriesRequest");
+
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
 
@@ -677,7 +678,6 @@ public class Node {
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() >= index && logs.get(index - 1).getTerm() != appendEntriesRequest.getEntries().get(0).getTerm()) {
             System.out.print("Conflict.\n");
             logs.remove(logs.size() - 1);
-            //specLog.apply("RemoveElementAt", logs.size() - 1);
 
             // PARAM : commitIndex'
             this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
@@ -692,7 +692,10 @@ public class Node {
             logs.addAll(appendEntriesRequest.getEntries());
             
             /* log' = [log EXCEPT ![i] =
-                                      Append(log[i], m.mentries[1])] */               
+                                      Append(log[i], m.mentries[1])] */   
+                                      
+            // PARAM : log'
+            //this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
 
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
@@ -724,21 +727,25 @@ public class Node {
             int matchIndex = (int)appendEntriesResponse.getMatchIndex();
             int nextIndex = matchIndex + 1;
             leaderState.getNextIndexes().put(fromNodeName, nextIndex);
+            
+            // use this : Map.of("type", TwoPhaseMessage.Prepared.toString(), "rm", this.name)
+            //this.traceNextIndex.getField(this.nodeInfo.name()).update(Map.of(fromNodeName, nextIndex));
+            this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, nextIndex);
+
             leaderState.getMatchIndexes().put(fromNodeName, matchIndex);
 
-            // PARAM : nextIndex'
-            //this.traceNextIndex.getField(fromNodeName).update(nextIndex);
 
             // PARAM : matchIndex'
-            //this.traceMatchIndex.getField(fromNodeName).update(matchIndex);
+            this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, matchIndex);
+            
         } else {
             int nextIndex = leaderState.getNextIndexes().get(fromNodeName);
             leaderState.getNextIndexes().put(fromNodeName, Math.max(nextIndex - 1, 1));
 
             // PARAM : nextIndex'
-            //this.traceNextIndex.getField(fromNodeName).update(Math.max(nextIndex - 1, 1));
+            //this.traceNextIndex.getField(this.nodeInfo.name()).update(Map.of(fromNodeName, Math.max(nextIndex - 1, 1)));
+            this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, Math.max(nextIndex - 1, 1));
         }
-
 
         // OK : trace HandleAppendEntriesResponse
         tracer.log("HandleAppendEntriesResponse", new Object[] { nodeInfo.name(), fromNodeName });

@@ -24,7 +24,7 @@ import org.lbee.helpers.Helpers;
 public class Node {
     public final TLATracer tracer;
 
-    // term number (initialized to 1 then incremented at each election)
+    // Term number (initialized to 1 then incremented at each election)
     private long term;
 
     // index of the log entry that is safely replicated on a majority of nodes (called quorum)
@@ -84,8 +84,7 @@ public class Node {
     private final VirtualField traceCommitIndex;
     private final VirtualField traceCurrentTerm;
     private final VirtualField traceLog;
-
-    private boolean reduceSSflag;
+    private final VirtualField traceMessages;
 
     public Node(String nodeName, Configuration configuration, TLATracer tracer) {
         // Utils
@@ -102,14 +101,10 @@ public class Node {
 
         // Listen for connections
         this.server = new Server(nodeInfo.port());
-        // this.server.start();
-        // System.out.printf("Node %s is listening on port %s. Seed: %s.\n", nodeInfo.name(), nodeInfo.port(), nodeInfo.seed());
 
         this.lastHeartbeat = System.currentTimeMillis();
 
         this.shutdown = false;
-
-        //leaderState = new LeaderState(/*quorum*/);
 
         electionTimeout = 1000 + randTimeout.nextInt(0, 5000);
         System.out.printf("election timeout %s.\n", electionTimeout);
@@ -127,9 +122,7 @@ public class Node {
         this.traceCommitIndex = tracer.getVariableTracer("commitIndex");
         this.traceCurrentTerm = tracer.getVariableTracer("currentTerm");
         this.traceLog = tracer.getVariableTracer("log");
-
-        // Feature flags
-        this.reduceSSflag = true;
+        this.traceMessages = tracer.getVariableTracer("messages");
     }
 
     private void setState(NodeState state) {
@@ -165,43 +158,40 @@ public class Node {
                 .forEach(n -> network.addConnection(n.name(), n.hostname(), n.port()));
     }
 
+    /**
+     * Restarts the node.
+     * This method transitions the node to the follower state, clears various parameters and updates the trace fields.
+     * 
+     * @throws InterruptedException if the thread is interrupted while waiting
+     * @throws IOException if an I/O error occurs
+     */
     private void restart() throws InterruptedException, IOException {
         System.out.printf("Node %s restarted.\n", nodeInfo.name());
 
         toFollower();
 
-        // PARAM : state'
         String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
-        this.traceState.getField(this.nodeInfo.name()).update(stateString);
-        
-        // PARAM : votesResponded'
+        this.traceState.getField(this.nodeInfo.name()).update(stateString);        
         this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
-
-        // PARAM : votesGranted'
         this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
-
 
         if (candidateState != null) {
             candidateState.clear();
         }
+
         else if (leaderState != null) {
             leaderState.clear();
             for (NodeInfo ni : clusterInfo.getNodes()) {
                 leaderState.getNextIndexes().put(ni.name(), 1);
                 leaderState.getMatchIndexes().put(ni.name(), 0);
 
-                // PARAM : parameter nextIndex'
                 this.traceNextIndex.getField(ni.name()).update(1);
-
-                // PARAM : parameter matchIndex'
                 this.traceMatchIndex.getField(ni.name()).update(0);
-            
             }
         }
 
         commitIndex = 0;
 
-        // PARAM : parameter commitIndex'
         this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
 
         // OK : trace Restart
@@ -209,8 +199,15 @@ public class Node {
 
     }
 
+    /**
+     * Runs the node and performs various actions periodically, such as sending heartbeats,
+     * handling client requests, appending entries, and restarting the node randomly.
+     * The method also checks for shutdown triggers and handles timeouts.
+     *
+     * @throws IOException if an I/O error occurs during the execution of the method.
+     */
     public void run() throws IOException {
-        long start = System.currentTimeMillis();
+
         // Prepare shutdown trigger
         final IntervalTrigger shutdownTrigger = new IntervalTrigger(() -> {
             try {
@@ -221,6 +218,7 @@ public class Node {
             }
         }, 60000);
 
+        // Prepare heartbeat trigger
         final IntervalTrigger sendHeartbeatTrigger =  new IntervalTrigger(() -> {
             try {
                 if (state == NodeState.Leader)
@@ -231,6 +229,7 @@ public class Node {
             }
         }, 500);
 
+        // Restart node randomly
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
             if (randEvent.nextInt(0, 8) == 0) {
                 try {
@@ -252,18 +251,17 @@ public class Node {
             }
         }, 1000);
 
+        // Append entries from time to time
         final IntervalTrigger appendEntriesTrigger = new IntervalTrigger(() -> {
-            //if (randEvent.nextInt(0, 5) == 0) {
-                try {
-                    if (state == NodeState.Leader)
-                        appendEntries();
-                } catch (IOException e) {
-                    // throw new RuntimeException(e);
-                   System.out.printf("Node %s couldn't append entries.\n", nodeInfo.name());
-                }
-            //}
+            try {
+                if (state == NodeState.Leader)
+                    appendEntries();
+            } catch (IOException e) {
+                System.out.printf("Node %s couldn't append entries.\n", nodeInfo.name());
+            }
         }, 1000);
 
+        // Display logs
         final IntervalTrigger displayLogTrigger = new IntervalTrigger(() -> {
             System.out.printf("LOG: %s.\n", logs.stream().map(Entry::getContent).collect(Collectors.toList()));
         }, 3000);
@@ -287,13 +285,16 @@ public class Node {
             // Restart node randomly
             restartTrigger.run();
             // Shutdown at some point
-            //shutdownTrigger.run();
+            shutdownTrigger.run();
         }
-
     }
 
-
-    // TLA Timeout
+    /**
+     * Handles the timeout event for the node. This method is called when the node's election timeout expires.
+     * Only a follower or candidate can start an election.
+     *
+     * @throws IOException if an I/O error occurs.
+     */
     public void timeout() throws IOException {
         assert state == NodeState.Follower || state == NodeState.Candidate : "Only follower or candidate can start an election";
 
@@ -312,20 +313,11 @@ public class Node {
         // Add term
         term += 1; // because of new election
 
-        // PARAM : state'
         String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
         this.traceState.getField(this.nodeInfo.name()).update(stateString);
-
-        // PARAM : currentTerm'
         this.traceCurrentTerm.getField(this.nodeInfo.name()).update(term);
-
-        // PARAM : votedFor'
         this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
-
-        // PARAM : votesResponded'
         this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
-
-        // PARAM : votesGranted'
         this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
 
         // OK : trace Timeout
@@ -333,22 +325,20 @@ public class Node {
 
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
 
+        // Send vote request himself (simulate message exchange)
         tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
         tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
 
-        // Simulate message exchange between this node and himself (see in raft spec, localhost exchange messages with itself)
-
-        // Necessary log if we want obtains Quorum, because trace spec can check holes
-        // in variable, but not hole in event
-        // Reproduce bug by commenting this bloc, show with tla+ debug how to find what's wrong ! by using hit count and ENABLED
-//        if (reduceSSflag) {
-//            final Message fakeMessage = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
-////            specMessages.apply("AddToBag", fakeMessage);
-//        }
-
         sendVoteRequest();
     }
+
+    /**
+     * Takes a message from the server's message box and processes it accordingly.
+     * If the message has a higher term than the current term, the term is updated.
+     *
+     * @throws IOException if an I/O error occurs while taking the message
+     */
     public void takeMessage() throws IOException {
         // Check box
         final Message message = server.getMessageBox().take(nodeInfo.name());
@@ -364,8 +354,12 @@ public class Node {
         // Redirect according to message type
         if (message instanceof final RequestVoteRequest requestVoteRequest)
             handleVoteRequest(requestVoteRequest);
-        else if (message instanceof final RequestVoteResponse requestVoteResponse)
-            handleVoteReply(requestVoteResponse);
+        else if (message instanceof final RequestVoteResponse requestVoteResponse){
+            
+            if(requestVoteResponse.getTerm() >= term){
+                this.traceMessages.removeFromBag(message);
+            } else handleVoteReply(requestVoteResponse);
+        }
         else if (message instanceof final AppendEntriesRequest appendEntriesRequest)
         {
             if (appendEntriesRequest.getEntries().isEmpty())
@@ -374,20 +368,38 @@ public class Node {
                 handleAppendEntriesRequest(appendEntriesRequest);
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
-            handleAppendEntriesResponse(appendEntriesResponse);
+            if(appendEntriesResponse.getTerm() >= term){
+                this.traceMessages.removeFromBag(message);
+            } else handleAppendEntriesResponse(appendEntriesResponse);
         }
     }
 
-    // TLA UpdateTerm
+    /**
+     * Updates the term of the node.
+     * 
+     * @param newTerm the new term to update the node with
+     * @throws IOException if an I/O error occurs
+     */
     private void updateTerm(long newTerm) throws IOException {
         term = newTerm;
         toFollower();
-        votedFor = "";
+        this.votedFor = "";
+
+        this.traceCurrentTerm.getField(this.nodeInfo.name()).update(newTerm);
+        String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+        this.traceState.getField(this.nodeInfo.name()).update(stateString);
+        this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
 
         // OK : trace UpdateTerm
-        tracer.log("UpdateTerm");
+        tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
     }
 
+    /**
+     * Sends a heartbeat to all nodes in the cluster.
+     * Only the leader node can send a heartbeat.
+     *
+     * @throws IOException if an I/O error occurs while sending the heartbeat.
+     */
     public void sendHeartbeat() throws IOException {
         assert state == NodeState.Leader : "Only leader can send heartbeat";
 
@@ -401,13 +413,22 @@ public class Node {
         }
     }
 
-
-
+    /**
+     * Handles a heartbeat message from the leader.
+     * This method updates the last heartbeat timestamp for the node.
+     */
     public void handleHeartbeat() {
         System.out.printf("Node %s handle heartbeat.\n", nodeInfo.name());
         lastHeartbeat = System.currentTimeMillis();
     }
 
+    /**
+     * Sends a vote request to all nodes in the cluster.
+     * A vote request is sent by a candidate node to all other nodes in the cluster to request their vote.
+     *
+     * @throws IOException if an I/O error occurs while sending the vote request.
+     * @throws IllegalStateException if the node is not in the candidate state.
+     */
     public void sendVoteRequest() throws IOException {
         assert state == NodeState.Candidate : "Node should be candidate in order to request a vote.";
 
@@ -422,8 +443,7 @@ public class Node {
 
             final Message message = new RequestVoteRequest(nodeInfo.name(), ni.name(), term, getLastLogTerm(), getLastLogIndex(),0);
 
-            if (reduceSSflag)
-                // specMessages.apply("AddToBag", message);
+            this.traceMessages.addToBag(message);
 
             // OK : trace RequestVote
             tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),ni.name()});
@@ -432,26 +452,61 @@ public class Node {
         }
     }
 
+
+    /**
+     * Handles a vote request from a candidate node.
+     * This method checks if the candidate's log is up-to-date and grants the vote if the candidate's log is at least as up-to-date as the receiver's log.
+     *
+     * @param m The request vote request message.
+     * @throws IOException If an I/O error occurs.
+     */
     public void handleVoteRequest(RequestVoteRequest m) throws IOException {
         System.out.printf("handleVoteRequest %s.\n", m.toString());
 
         boolean logOk = m.getLastLogTerm() > getLastLogTerm() || m.getLastLogTerm() == getLastLogTerm() && m.getLastLogIndex() >= getLastLogIndex();
         boolean grant = m.getTerm() == term && logOk && (votedFor.equals(m.getFrom()) || votedFor.equals(""));
         
-        if (m.getTerm() <= term && grant) {
-            // PARAM : votedFor'
-            this.traceVotedFor.getField(this.nodeInfo.name()).update(m.getFrom());
+        if (m.getTerm() <= term) {
+            if(grant){
+                votedFor = m.getFrom();
+                this.traceVotedFor.getField(this.nodeInfo.name()).update(m.getFrom());
+            }
+            
+            
+            // Reply to vote request
+            final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
+            
+            // Add to trace
+            //reply(response,m);
+
+            network.send(m.getFrom(),response);
         }
-        
+
         // OK : trace HandleRequestVoteRequest
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom()});
         
-        // Reply to vote request
-        final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
-
-        network.send(m.getFrom(),response);
     }
 
+    /**
+     * Used for tracing purposes.
+     * Replies to a vote request.
+     * 
+     * @param m The vote request message
+     * @param response The vote response message
+     * @throws IOException if an I/O error occurs
+     */
+    private void reply(Message response, Message request) throws IOException {
+        this.traceMessages.addToBag(response);
+        this.traceMessages.removeFromBag(request);
+    }
+
+    /**
+     * Handles the response to a vote request from other nodes.
+     * Only a candidate node can handle the vote reply.
+     *
+     * @param m The response to the vote request.
+     * @throws IOException If an I/O error occurs.
+     */
     public void handleVoteReply(RequestVoteResponse m) throws IOException {
         assert state == NodeState.Candidate : "Only candidate can handle vote reply.";
         assert m.getTerm() == term;
@@ -465,25 +520,29 @@ public class Node {
             // Add node that granted a vote to me
             candidateState.getGranted().add(m.getFrom());
 
-            // PARAM : votesGranted'
             this.traceVotesGranted.getField(this.nodeInfo.name()).add(m.getFrom());
         }
 
-        // m.mterm = currentTerm[i]
         assert m.getTerm() == term : "Term should be the same.";
 
-        // PARAM : votesResponded'
+        // Remove message from bag
+        this.traceMessages.removeFromBag(m);
+
         this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
 
         // OK : trace HandleRequestVoteResponse
         tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
 
-        // Note: BUG -> Quorum == {i \in SUBSET(Server) : Cardinality(i) * 2 > Cardinality(Server)}
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
             becomeLeader();
         }
     }
 
+    /**
+     * Transitions the node to the leader state.
+     * 
+     * @throws IOException if an I/O error occurs during the transition.
+     */
     public void becomeLeader() throws IOException {
 
         assert state == NodeState.Candidate : "Only a candidate can become a leader.";
@@ -494,27 +553,25 @@ public class Node {
         sendHeartbeat();
         System.out.printf("Node %s is Leader.\n", nodeInfo.name());
 
-        // PARAM : state'
         traceState.getField(nodeInfo.name()).update("Leader");
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
             leaderState.getNextIndexes().put(ni.name(), logs.size() + 1);
             leaderState.getMatchIndexes().put(ni.name(), 0);
 
-             // PARAM : nextIndex'
-             //this.traceNextIndex.getField(ni.name()).update(logs.size() + 1);
-
-             // PARAM : matchIndex'
-             //this.traceMatchIndex.getField(ni.name()).update(0);
-
-            // specNextIndex.getField(ni.name()).set(logs.size() + 1);
-            // specMatchIndex.getField(ni.name()).set(0);
+            this.traceNextIndex.getField(this.nodeInfo.name()).setKey(ni.name(), logs.size() + 1);
+            this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(ni.name(), 0);
         }
 
         // OK : trace BecomeLeader
         tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
     }
 
+    /**
+     * Processes a client request and adds an entry to the logs if the node is in the Leader state.
+     * 
+     * @throws IOException if an I/O error occurs
+     */
     private void clientRequest() throws IOException {
         if (state != NodeState.Leader)
             return;
@@ -526,13 +583,18 @@ public class Node {
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
 
-        // PARAM : log'
         this.traceLog.getField(nodeInfo.name()).append(entry);
 
         // OK : trace ClientRequest
         tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
     }
 
+    /**
+     * Sends append entries requests to all nodes in the cluster except for the current node.
+     * This method can only be called by the leader node.
+     *
+     * @throws IOException if an I/O error occurs while sending the append entries requests.
+     */
     private void appendEntries() throws IOException {
         assert state == NodeState.Leader : "Only leader can send append entries requests.";
 
@@ -546,8 +608,14 @@ public class Node {
         }
     }
 
+    /**
+     * Appends entries to the specified node.
+     *
+     * @param nodeName the name of the node to append entries to
+     * @throws IOException if an I/O error occurs
+     */
     private void appendEntries(String nodeName) throws IOException {
-        // Optimization: Return immediately if there are no entries to append
+
         int nextIndex = leaderState.getNextIndexes().get(nodeName);
         if (nextIndex > logs.size()) {
             System.out.println("No new entries to append for node: " + nodeName);
@@ -573,6 +641,8 @@ public class Node {
             msgCommitIndex, 
             0
         );
+
+        this.traceMessages.addToBag(appendEntriesRequest);
     
         System.out.println("Sending AppendEntriesRequest to node: " + nodeName);
         tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });
@@ -580,6 +650,13 @@ public class Node {
         network.send(nodeName, appendEntriesRequest);
     }    
 
+    /**
+     * Advances the commit index of the Raft node.
+     * This method is called by the leader node to determine the new commit index based on the agreement of the cluster nodes.
+     * The commit index is updated if a majority of nodes in the cluster have agreed on a log entry.
+     *
+     * @throws IOException if an I/O error occurs while updating the commit index.
+     */
     private void advanceCommitIndex() throws IOException {
 
         if (state != NodeState.Leader)
@@ -604,22 +681,23 @@ public class Node {
             commitIndex = maxAgreeIndex;
         }
 
-        // PARAM : commitIndex'
         this.traceCommitIndex.getField(this.nodeInfo.name()).update(commitIndex);
 
         // OK : trace AdvanceCommitIndex
         tracer.log("AdvanceCommitIndex", new Object[] { nodeInfo.name() });
     }
 
+    /**
+     * Handles an AppendEntriesRequest received from the leader.
+     *
+     * @param appendEntriesRequest The AppendEntriesRequest to handle.
+     * @throws IOException If an I/O error occurs.
+     */
     private void handleAppendEntriesRequest(AppendEntriesRequest appendEntriesRequest) throws IOException {
 
         System.out.printf("handleAppendEntriesRequest %s.\n", appendEntriesRequest);
 
         long previousLogIndex = appendEntriesRequest.getLastLogIndex();
-//        LET logOk == \/ m.mprevLogIndex = 0
-//                 \/ /\ m.mprevLogIndex > 0
-//                /\ m.mprevLogIndex <= Len(log[i])
-//                /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
         boolean logOk = previousLogIndex == 0 ||
                 (previousLogIndex > 0
                         &&  previousLogIndex <= logs.size()
@@ -629,6 +707,10 @@ public class Node {
         if (state == NodeState.Candidate) {
             if (appendEntriesRequest.getTerm() == term){
                 toFollower();
+
+                String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+                this.traceState.getField(this.nodeInfo.name()).update(stateString);
+
                 // OK : trace HandleAppendEntriesRequest
                 tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             }
@@ -646,6 +728,12 @@ public class Node {
         tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
     }
 
+    /**
+     * Accepts an AppendEntriesRequest and appends the entries to the logs.
+     *
+     * @param appendEntriesRequest The AppendEntriesRequest to be accepted.
+     * @throws IOException If an I/O error occurs.
+     */
     private void acceptAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
         System.out.print("Accept append entries.\n");
         int index = (int)appendEntriesRequest.getLastLogIndex() + 1;
@@ -659,28 +747,29 @@ public class Node {
 
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
 
+            // Add to trace
+            reply(appendEntriesResponse, appendEntriesRequest);
+
+            this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
+
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
 
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
 
-        // TODO implement Conflict
-//        \/ \* conflict: remove 1 entry
-//        /\ m.mentries /= << >>
-//        /\ Len(log[i]) >= index
-//        /\ log[i][index].term /= m.mentries[1].term
-//        /\ LET new == [index2 \in 1..(Len(log[i]) - 1) |->
-//        log[i][index2]]
-//        IN log' = [log EXCEPT ![i] = new]
-//        /\ UNCHANGED <<serverVars, commitIndex, messages>>
-//        \/ \* no conflict: append entry
+        // Conflict : remove 1 entry
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() >= index && logs.get(index - 1).getTerm() != appendEntriesRequest.getEntries().get(0).getTerm()) {
             System.out.print("Conflict.\n");
             logs.remove(logs.size() - 1);
 
-            // PARAM : commitIndex'
-            this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
+           
+            /* List<Entry> newEntries = new ArrayList<>();
+            for (int i = 0; i < logs.size() - 1; i++) {
+                newEntries.add(logs.get(i));
+            }
+
+            this.traceLog.getField(nodeInfo.name()).update(newEntries); */
 
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
@@ -690,34 +779,23 @@ public class Node {
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
             System.out.print("No conflict.\n");
             logs.addAll(appendEntriesRequest.getEntries());
-            
-            /* log' = [log EXCEPT ![i] =
-                                      Append(log[i], m.mentries[1])] */   
                                       
-            // PARAM : log'
-            //this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
+            this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
 
             // OK : trace HandleAppendEntriesRequest
             tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
         }
     }
 
+    /**
+     * Handles the response to an append entries request.
+     * This method updates the next index and match index of the leader node.
+     *
+     * @param appendEntriesResponse The response to the append entries request.
+     * @throws IOException If an I/O error occurs.
+     */
     private void handleAppendEntriesResponse(AppendEntriesResponse appendEntriesResponse) throws IOException {
         System.out.printf("handleAppendEntriesResponse %s.\n", appendEntriesResponse);
-
-// TODO : parameters
-/*
-        /\ m.mterm = currentTerm[i]
-        /\ \/ /\ m.msuccess \* successful
-              /\ nextIndex'  = [nextIndex  EXCEPT ![i][j] = m.mmatchIndex + 1]
-              /\ matchIndex' = [matchIndex EXCEPT ![i][j] = m.mmatchIndex]
-           \/ /\ \lnot m.msuccess \* not successful
-              /\ nextIndex' = [nextIndex EXCEPT ![i][j] =
-                                   Max({nextIndex[i][j] - 1, 1})]
-              /\ UNCHANGED <<matchIndex>>
-        /\ Discard(m)
-        /\ UNCHANGED <<serverVars, candidateVars, logVars, elections>>
-*/
 
         if (appendEntriesResponse.getTerm() != term)
             return;
@@ -728,38 +806,39 @@ public class Node {
             int nextIndex = matchIndex + 1;
             leaderState.getNextIndexes().put(fromNodeName, nextIndex);
             
-            // use this : Map.of("type", TwoPhaseMessage.Prepared.toString(), "rm", this.name)
-            //this.traceNextIndex.getField(this.nodeInfo.name()).update(Map.of(fromNodeName, nextIndex));
             this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, nextIndex);
 
             leaderState.getMatchIndexes().put(fromNodeName, matchIndex);
 
-
-            // PARAM : matchIndex'
             this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, matchIndex);
-            
         } else {
             int nextIndex = leaderState.getNextIndexes().get(fromNodeName);
             leaderState.getNextIndexes().put(fromNodeName, Math.max(nextIndex - 1, 1));
 
-            // PARAM : nextIndex'
-            //this.traceNextIndex.getField(this.nodeInfo.name()).update(Map.of(fromNodeName, Math.max(nextIndex - 1, 1)));
             this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, Math.max(nextIndex - 1, 1));
         }
+
+        this.traceMessages.removeFromBag(appendEntriesResponse);
 
         // OK : trace HandleAppendEntriesResponse
         tracer.log("HandleAppendEntriesResponse", new Object[] { nodeInfo.name(), fromNodeName });
 
-        // Advance index
         advanceCommitIndex();
     }
 
+    /**
+     * Rejects the append entries request by sending an append entries response with success set to false.
+     * 
+     * @param appendEntriesRequest The append entries request to reject.
+     * @throws IOException If an I/O error occurs while sending the append entries response.
+     */
     private void rejectAppendEntries(AppendEntriesRequest appendEntriesRequest) throws IOException {
         System.out.print("Reject append entries.\n");
         String to = appendEntriesRequest.getFrom();
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
-        // specMessages.apply("AddToBag", appendEntriesResponse);
-        // specMessages.apply("RemoveFromBag", appendEntriesRequest);
+
+        // Add to trace
+        reply(appendEntriesResponse, appendEntriesRequest);
 
         // OK : trace HandleAppendEntriesRequest
         tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), to });
@@ -768,6 +847,11 @@ public class Node {
     }
 
 
+    /**
+     * Shuts down the node by stopping the network.
+     *
+     * @throws IOException if an I/O error occurs while shutting down the network.
+     */
     public void shutdown() throws IOException {
         network.shutdown();
         shutdown = true;
@@ -777,5 +861,7 @@ public class Node {
      * Is the manager has been shutdown
      * @return True if manager has been shutdown
      */
-    public boolean isShutdown() { return shutdown; }
+    public boolean isShutdown() {
+        return shutdown;
+    }
 }

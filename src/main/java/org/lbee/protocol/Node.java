@@ -85,6 +85,7 @@ public class Node {
     private final VirtualField traceCurrentTerm;
     private final VirtualField traceLog;
     private final VirtualField traceMessages;
+    private final VirtualField traceElections;
 
     public Node(String nodeName, Configuration configuration, TLATracer tracer) {
         // Utils
@@ -123,6 +124,7 @@ public class Node {
         this.traceCurrentTerm = tracer.getVariableTracer("currentTerm");
         this.traceLog = tracer.getVariableTracer("log");
         this.traceMessages = tracer.getVariableTracer("messages");
+        this.traceElections = tracer.getVariableTracer("elections");
     }
 
     private void setState(NodeState state) {
@@ -326,10 +328,17 @@ public class Node {
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
 
         // Send vote request himself (simulate message exchange)
-        this.traceMessages.addToBag(new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0));
+        RequestVoteRequest requestVoteRequest = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
+        this.traceMessages.addToBag(requestVoteRequest);
         tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        
+        Message response = new RequestVoteResponse(nodeInfo.name(), nodeInfo.name(), term, false, 0);
+        //reply(response,requestVoteRequest);
+
         this.traceVotedFor.getField(this.nodeInfo.name()).update(nodeInfo.name());
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        
+        //this.traceMessages.removeFromBag(response);
         this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
         this.traceVotesResponded.getField(this.nodeInfo.name()).add(nodeInfo.name());    
         tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
@@ -360,9 +369,11 @@ public class Node {
             handleVoteRequest(requestVoteRequest);
         else if (message instanceof final RequestVoteResponse requestVoteResponse){
             
-            if(requestVoteResponse.getTerm() >= term){
+            if(requestVoteResponse.getTerm() < term){
                 this.traceMessages.removeFromBag(message);
-            } else handleVoteReply(requestVoteResponse);
+            } else if(message.getTerm() == term){
+                handleVoteReply(requestVoteResponse);
+            }
         }
         else if (message instanceof final AppendEntriesRequest appendEntriesRequest)
         {
@@ -372,9 +383,11 @@ public class Node {
                 handleAppendEntriesRequest(appendEntriesRequest);
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
-            if(appendEntriesResponse.getTerm() >= term){
+            if(appendEntriesResponse.getTerm() < term){
                 this.traceMessages.removeFromBag(message);
-            } else handleAppendEntriesResponse(appendEntriesResponse);
+            } else if(message.getTerm() == term){
+                handleAppendEntriesResponse(appendEntriesResponse);
+            }
         }
     }
 
@@ -476,7 +489,6 @@ public class Node {
                 this.traceVotedFor.getField(this.nodeInfo.name()).update(m.getFrom());
             }
             
-            
             // Reply to vote request
             final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
             
@@ -530,7 +542,7 @@ public class Node {
         assert m.getTerm() == term : "Term should be the same.";
 
         // Remove message from bag
-        this.traceMessages.removeFromBag(m);
+        //this.traceMessages.removeFromBag(m);
 
         this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
 
@@ -568,6 +580,15 @@ public class Node {
         }
 
         // TODO : election' ?
+
+        /* /\ elections'  = elections \cup
+        {[eterm     |-> currentTerm[i],
+          eleader   |-> i,
+          elog      |-> log[i],
+          evotes    |-> votesGranted[i] (this is the set of servers from which the candidate has received a vote in its currentTerm)*/
+
+        
+        //this.traceElections.add(Map.of("eterm", term, "eleader", nodeInfo.name()));
 
         // OK : trace BecomeLeader
         tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
@@ -673,7 +694,6 @@ public class Node {
 
             long nbAgree = clusterInfo.getNodes().stream().filter(nodeInfo -> !nodeInfo.name().equals(this.nodeInfo.name()) && leaderState.getMatchIndexes().get(nodeInfo.name()) >= finalI).count() + 1;
 
-            // TEST : BUG
             if (nbAgree > clusterInfo.getQuorum())
             {
                 maxAgreeIndex = i;

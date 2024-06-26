@@ -72,8 +72,10 @@ RAMapVariables(t) ==
         IF "commitIndex" \in DOMAIN t
         THEN commitIndex' = UpdateVariable(commitIndex, "commitIndex", t)
         ELSE TRUE
-
-
+    /\
+        IF "elections" \in DOMAIN t
+        THEN elections' = UpdateVariable(elections, "elections", t)
+        ELSE TRUE
 
 IsRestart ==
     /\ IsEvent("Restart")

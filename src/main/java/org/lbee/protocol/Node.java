@@ -326,8 +326,12 @@ public class Node {
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
 
         // Send vote request himself (simulate message exchange)
+        this.traceMessages.addToBag(new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0));
         tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        this.traceVotedFor.getField(this.nodeInfo.name()).update(nodeInfo.name());
         tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
+        this.traceVotesResponded.getField(this.nodeInfo.name()).add(nodeInfo.name());    
         tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
 
         sendVoteRequest();
@@ -563,6 +567,8 @@ public class Node {
             this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(ni.name(), 0);
         }
 
+        // TODO : election' ?
+
         // OK : trace BecomeLeader
         tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
     }
@@ -601,9 +607,6 @@ public class Node {
         for (NodeInfo ni : clusterInfo.getNodes()) {
             if (!ni.name().equals(nodeInfo.name())){
                 appendEntries(ni.name());
-
-                // OK : trace AppendEntries
-                tracer.log("AppendEntries", new Object[] { nodeInfo.name(), ni.name() });
             }
         }
     }
@@ -645,6 +648,8 @@ public class Node {
         this.traceMessages.addToBag(appendEntriesRequest);
     
         System.out.println("Sending AppendEntriesRequest to node: " + nodeName);
+        
+        // OK : trace AppendEntries
         tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });
     
         network.send(nodeName, appendEntriesRequest);

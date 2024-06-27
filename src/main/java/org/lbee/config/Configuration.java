@@ -2,9 +2,12 @@ package org.lbee.config;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+
+import org.lbee.instrumentation.helper.ConfigurationManager;
 import org.lbee.models.ClusterInfo;
 import org.lbee.models.NodeInfo;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,13 +15,15 @@ public class Configuration {
 
     private final ClusterInfo clusterInfo;
     private static final String LOCALHOST = "localhost";
-    public final List<String> vals;
+    public final List<String> values;
 
-    public Configuration(JsonObject jsonConfig) {
+    public Configuration(String confFile) throws IOException {
+        this.values = new ArrayList<>();
+        JsonObject jsonConfig;
+        jsonConfig = ConfigurationManager.read(confFile);
 
-        this.vals = new ArrayList<>();
         for (JsonElement e : jsonConfig.getAsJsonArray("Value")) {
-            vals.add(e.getAsString());
+            values.add(e.getAsString());
         }
 
         final ArrayList<NodeInfo> nodesInfo = new ArrayList<>();
@@ -40,13 +45,15 @@ public class Configuration {
         return this.clusterInfo;
     }
 
-    public List<String> getVals() { return vals; }
+    public List<String> getValues() {
+        return values;
+    }
 
     @Override
     public String toString() {
         return "Configuration{" +
                 "clusterInfo=" + clusterInfo +
-                ", vals=" + vals +
+                ", vals=" + values +
                 '}';
     }
 }

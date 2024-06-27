@@ -15,7 +15,7 @@ public class Helpers {
      * @return A value
      */
     public static String pickRandomVal(Configuration configuration) {
-        return configuration.getVals().get(random.nextInt(configuration.getVals().size()));
+        return configuration.getValues().get(random.nextInt(configuration.getValues().size()));
     }
 
 }

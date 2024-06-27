@@ -4,15 +4,12 @@ import org.lbee.config.Configuration;
 import org.lbee.instrumentation.clock.ClockException;
 import org.lbee.instrumentation.clock.ClockFactory;
 
-import org.lbee.instrumentation.helper.ConfigurationManager;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.lbee.instrumentation.trace.TLATracer;
 import org.lbee.models.ClusterInfo;
-import org.lbee.models.NodeInfo;
 
 public class Main {
 
@@ -24,8 +21,7 @@ public class Main {
         final String nodeName = args[0];
 
         // Write configuration
-        final Configuration configuration = new Configuration(ConfigurationManager.read("conf.ndjson"));
-        //System.out.println("Config: " + configuration);
+        final Configuration configuration = new Configuration("conf.ndjson");
 
         ClusterInfo clusterInfo = configuration.getClusterInfo();
 
@@ -34,12 +30,14 @@ public class Main {
             return;
         }
 
+        List<String> values = configuration.getValues();
+
         // Init tracer
         TLATracer spec = TLATracer.getTracer(nodeName + ".ndjson",
                 ClockFactory.getClock(ClockFactory.FILE,"raft.clock"));
 
         // Init node
-        final Node node = new Node(nodeName, clusterInfo, spec);
+        final Node node = new Node(nodeName, clusterInfo, values, spec);
 
         // Initialize node and start node server
         node.start();

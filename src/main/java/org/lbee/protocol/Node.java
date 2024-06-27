@@ -48,6 +48,7 @@ public class Node {
     // Information about nodes cluster
     private final NodeInfo nodeInfo;
     private final ClusterInfo clusterInfo;
+    private final List<String> values;
 
     // Random number generator
     private final Random randTimeout;
@@ -85,8 +86,9 @@ public class Node {
     private final VirtualField traceMessages;
     private final VirtualField traceElections;
 
-    public Node(String nodeName, ClusterInfo clusterInfo, TLATracer tracer) {
+    public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer) {
         this.clusterInfo = clusterInfo;
+        this.values = values;
         this.nodeInfo = clusterInfo.getNode(nodeName);
 
         this.term = 1;
@@ -600,7 +602,7 @@ public class Node {
             return;
 
         // String entry_value = Helpers.pickRandomVal(configuration);
-        String entry_value = ValuesGenerator.pickRandomVal();
+        String entry_value = ValuesGenerator.pickRandomVal(values);
 
         final Entry entry = new Entry(term, entry_value);
         logs.add(entry);

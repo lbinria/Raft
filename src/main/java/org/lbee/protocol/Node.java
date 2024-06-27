@@ -20,6 +20,7 @@ import org.lbee.models.messages.RequestVoteResponse;
 import org.lbee.network.Network;
 import org.lbee.network.Server;
 import org.lbee.helpers.Helpers;
+import org.lbee.helpers.ValuesGenerator;
 
 public class Node {
     public final TLATracer tracer;
@@ -603,7 +604,8 @@ public class Node {
         if (state != NodeState.Leader)
             return;
 
-        String entry_value = Helpers.pickRandomVal(configuration);
+        // String entry_value = Helpers.pickRandomVal(configuration);
+        String entry_value = ValuesGenerator.pickRandomVal();
 
         final Entry entry = new Entry(term, entry_value);
         logs.add(entry);

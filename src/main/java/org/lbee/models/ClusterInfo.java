@@ -19,7 +19,9 @@ public class ClusterInfo {
         return nodes.get(nodeName);
     }
 
-    public boolean hasNode(String nodeName) { return nodes.containsKey(nodeName); }
+    public boolean hasNode(String nodeName) {
+        return nodes.containsKey(nodeName);
+    }
 
     public List<NodeInfo> getNodes() {
         return nodes.values().stream().toList();

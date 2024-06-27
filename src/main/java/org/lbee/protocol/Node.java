@@ -19,7 +19,6 @@ import org.lbee.models.messages.RequestVoteRequest;
 import org.lbee.models.messages.RequestVoteResponse;
 import org.lbee.network.Network;
 import org.lbee.network.Server;
-import org.lbee.helpers.Helpers;
 import org.lbee.helpers.ValuesGenerator;
 
 public class Node {
@@ -49,8 +48,6 @@ public class Node {
     // Information about nodes cluster
     private final NodeInfo nodeInfo;
     private final ClusterInfo clusterInfo;
-
-    private Configuration configuration;
 
     // Random number generator
     private final Random randTimeout;
@@ -88,13 +85,11 @@ public class Node {
     private final VirtualField traceMessages;
     private final VirtualField traceElections;
 
-    public Node(String nodeName, Configuration configuration, TLATracer tracer) {
-        // Utils
-        this.configuration = configuration;
-        this.clusterInfo = configuration.getClusterInfo();
+    public Node(String nodeName, ClusterInfo clusterInfo, TLATracer tracer) {
+        this.clusterInfo = clusterInfo;
         this.nodeInfo = clusterInfo.getNode(nodeName);
 
-        this.term= 1;
+        this.term = 1;
         this.state = NodeState.Follower;
         this.logs = new ArrayList<>();
         this.randTimeout = new Random(nodeInfo.seed());

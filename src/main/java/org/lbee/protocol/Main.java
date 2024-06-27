@@ -7,9 +7,12 @@ import org.lbee.instrumentation.clock.ClockFactory;
 import org.lbee.instrumentation.helper.ConfigurationManager;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.models.ClusterInfo;
+import org.lbee.models.NodeInfo;
 
 public class Main {
 
@@ -24,8 +27,9 @@ public class Main {
         final Configuration configuration = new Configuration(ConfigurationManager.read("conf.ndjson"));
         //System.out.println("Config: " + configuration);
 
-        // Some checks
-        if (!configuration.getClusterInfo().hasNode(nodeName)) {
+        ClusterInfo clusterInfo = configuration.getClusterInfo();
+
+        if (!clusterInfo.hasNode(nodeName)) {
             System.out.printf("Node name '%s' given as program parameter doesn't exist in configuration.\n", nodeName);
             return;
         }
@@ -35,7 +39,7 @@ public class Main {
                 ClockFactory.getClock(ClockFactory.FILE,"raft.clock"));
 
         // Init node
-        final Node node = new Node(nodeName, configuration, spec);
+        final Node node = new Node(nodeName, clusterInfo, spec);
 
         // Initialize node and start node server
         node.start();

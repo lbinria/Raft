@@ -325,16 +325,19 @@ public class Node {
 
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
 
+        // BUG : simulate message exchange in the bag
         // Send vote request himself (simulate message exchange)
         RequestVoteRequest requestVoteRequest = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
         this.traceMessages.addToBag(requestVoteRequest);
         tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
         
         Message response = new RequestVoteResponse(nodeInfo.name(), nodeInfo.name(), term, false, 0);
-        //reply(response,requestVoteRequest);
+
+        //this.traceMessages.addToBag(response);
+        //this.traceMessages.removeFromBag(requestVoteRequest);
 
         this.traceVotedFor.getField(this.nodeInfo.name()).update(nodeInfo.name());
-        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name(), requestVoteRequest});
         
         //this.traceMessages.removeFromBag(response);
         this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
@@ -489,15 +492,16 @@ public class Node {
             
             // Reply to vote request
             final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
-            
-            // Add to trace
-            //reply(response,m);
+
+            // BUG : reply
+            // this.traceMessages.addToBag(response);
+            // this.traceMessages.removeFromBag(m);
 
             network.send(m.getFrom(),response);
         }
 
         // OK : trace HandleRequestVoteRequest
-        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom()});
+        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom(),m});
         
     }
 
@@ -539,7 +543,7 @@ public class Node {
 
         assert m.getTerm() == term : "Term should be the same.";
 
-        // Remove message from bag
+        // BUG : remove message from bag
         //this.traceMessages.removeFromBag(m);
 
         this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
@@ -584,7 +588,6 @@ public class Node {
           eleader   |-> i,
           elog      |-> log[i],
           evotes    |-> votesGranted[i] (this is the set of servers from which the candidate has received a vote in its currentTerm)*/
-
         
         //this.traceElections.add(Map.of("eterm", term, "eleader", nodeInfo.name()));
 

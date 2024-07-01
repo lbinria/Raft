@@ -77,6 +77,22 @@ RAMapVariables(t) ==
         THEN elections' = UpdateVariable(elections, "elections", t)
         ELSE TRUE
 
+IsDuplicateMessage ==
+    /\ IsEvent("DuplicateMessage")
+    /\
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            DuplicateMessage(logline.event_args[1])
+        ELSE
+            \E m \in DOMAIN messages : DuplicateMessage(m)
+
+IsDropMessage ==
+    /\ IsEvent("DropMessage")
+    /\
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            DropMessage(logline.event_args[1])
+        ELSE
+            \E m \in DOMAIN messages : DropMessage(m)
+
 IsRestart ==
     /\ IsEvent("Restart")
     /\
@@ -116,17 +132,14 @@ IsBecomeLeader ==
 
 IsHandleRequestVoteRequest ==
     /\ IsEvent("HandleRequestVoteRequest")
-    /\ \E m \in DOMAIN messages :
+    /\
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            /\ logline.event_args[1] = m.mdest
-            /\ logline.event_args[2] = m.msource
-            /\ m.mtype = RequestVoteRequest
-            /\ HandleRequestVoteRequest(logline.event_args[1],logline.event_args[2],m)
+            HandleRequestVoteRequest(logline.event_args[1],logline.event_args[2],logline.event_args[3])
         ELSE
-            LET i == m.mdest
-            j == m.msource IN
-            /\ m.mtype = RequestVoteRequest
-            /\ HandleRequestVoteRequest(i, j, m)
+            \E m \in DOMAIN messages :
+                LET i == m.mdest
+                j == m.msource IN
+                /\ HandleRequestVoteRequest(i, j, m)
 
 IsHandleRequestVoteResponse ==
     /\ IsEvent("HandleRequestVoteResponse")
@@ -234,6 +247,8 @@ IsHandleAppendEntriesResponse ==
 
 RATraceNext ==
     /\
+        \/ IsDuplicateMessage
+        \/ IsDropMessage
         \/ IsRestart
         \/ IsTimeout
         \/ IsRequestVote

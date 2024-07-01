@@ -26,8 +26,9 @@ TraceQuorum ==
 TraceMaxTerm ==
     Trace[1].MaxTerm
 
-(* Replace None constant *)
-TraceNone == "null"
+(* Replace MaxEntries constant *)
+TraceMaxEntries ==
+    Trace[1].MaxEntries
 
 (* Replace Term constant *)
 TraceTerm ==
@@ -40,7 +41,7 @@ RADefault(varName) ==
     (* /\ entries \in [Server -> Seq(Entry)] *)
     CASE varName = "entries" -> [i \in Server |-> << >>]
     []  varName = "commitIdx" -> [i \in Server |-> 0]
-    []  varName = "role" -> [i \in Server |-> Follower]
+    []  varName = "role" -> [i \in Server |-> "follower"]
     []  varName = "term" -> [i \in Server |-> 1]
     []  varName = "ballots" -> [i \in Server |-> Nil]
     []  varName = "ghostEntries" -> [i \in Server |-> {}]
@@ -48,7 +49,7 @@ RADefault(varName) ==
 RAMapVariables(t) ==
     /\
         IF "entries" \in DOMAIN t
-        THEN currentTerm' = UpdateVariable(entries, "entries", t)
+        THEN entries' = UpdateVariable(entries, "entries", t)
         ELSE TRUE
     /\
         IF "commitIdx" \in DOMAIN t

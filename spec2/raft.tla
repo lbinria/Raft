@@ -1,4 +1,4 @@
-------------------------------- MODULE AbstractRaft ---------------------------
+------------------------------- MODULE raft ---------------------------
 EXTENDS Naturals, Sequences, TLC
 (*****************************************************************************)
 (* A high-level specification of the fundamental mechanisms of the Raft      *)

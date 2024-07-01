@@ -39,7 +39,7 @@ def run_tla(trace_spec, trace="trace.ndjson", config="conf.ndjson", dfs=False):
 if __name__ == "__main__":
     # Read program args
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument('abstract_raft', type=str, help="Specification file")
+    parser.add_argument('spec', type=str, help="Specification file")
     parser.add_argument('--trace', type=str, required=False, default="trace.ndjson", help="Trace file")
     parser.add_argument('--config', type=str, required=False, default="conf.ndjson", help="Config file")
     parser.add_argument('-dfs', '--dfs', type=bool, action=argparse.BooleanOptionalAction, help="breadth-first search")

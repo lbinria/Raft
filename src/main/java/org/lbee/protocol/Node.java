@@ -86,6 +86,9 @@ public class Node {
     private final VirtualField traceMessages;
     private final VirtualField traceElections;
 
+    private final boolean classic_raft = false;
+    private final boolean abstract_raft = false;
+
     public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer) {
         this.clusterInfo = clusterInfo;
         this.values = values;
@@ -170,10 +173,12 @@ public class Node {
 
         toFollower();
 
-        String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
-        this.traceState.getField(this.nodeInfo.name()).update(stateString);        
-        this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
-        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
+        if(classic_raft){
+            String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+            this.traceState.getField(this.nodeInfo.name()).update(stateString);        
+            this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
+            this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
+        }
 
         if (candidateState != null) {
             candidateState.clear();
@@ -185,18 +190,19 @@ public class Node {
                 leaderState.getNextIndexes().put(ni.name(), 1);
                 leaderState.getMatchIndexes().put(ni.name(), 0);
 
-                this.traceNextIndex.getField(ni.name()).update(1);
-                this.traceMatchIndex.getField(ni.name()).update(0);
+                if(classic_raft){
+                    this.traceNextIndex.getField(ni.name()).update(1);
+                    this.traceMatchIndex.getField(ni.name()).update(0);
+                }
             }
         }
 
         commitIndex = 0;
 
-        this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
-
-        // OK : trace Restart
-        tracer.log("Restart", new Object[] { nodeInfo.name() });
-
+        if(classic_raft){
+            this.traceCommitIndex.getField(this.nodeInfo.name()).update(0);
+            tracer.log("Restart", new Object[] { nodeInfo.name() });
+        }
     }
 
     /**
@@ -313,36 +319,39 @@ public class Node {
         // Add term
         term += 1; // because of new election
 
-        String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
-        this.traceState.getField(this.nodeInfo.name()).update(stateString);
-        this.traceCurrentTerm.getField(this.nodeInfo.name()).update(term);
-        this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
-        this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
-        this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
+        if(classic_raft){
+            String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+            this.traceState.getField(this.nodeInfo.name()).update(stateString);
+            this.traceCurrentTerm.getField(this.nodeInfo.name()).update(term);
+            this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
+            this.traceVotesResponded.getField(this.nodeInfo.name()).clear();
+            this.traceVotesGranted.getField(this.nodeInfo.name()).clear();
 
-        // OK : trace Timeout
-        tracer.log("Timeout", new Object[] { nodeInfo.name() });
+            tracer.log("Timeout", new Object[] { nodeInfo.name() });
+        }
 
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
 
-        // BUG : simulate message exchange in the bag
-        // Send vote request himself (simulate message exchange)
-        RequestVoteRequest requestVoteRequest = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
-        this.traceMessages.addToBag(requestVoteRequest);
-        tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
-        
-        Message response = new RequestVoteResponse(nodeInfo.name(), nodeInfo.name(), term, false, 0);
+        if(classic_raft){
+            // BUG : simulate message exchange in the bag
+            // Send vote request himself (simulate message exchange)
+            RequestVoteRequest requestVoteRequest = new RequestVoteRequest(nodeInfo.name(), nodeInfo.name(), term, getLastLogTerm(), getLastLogIndex(),0);
+            this.traceMessages.addToBag(requestVoteRequest);
+            tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name()});
+            
+            Message response = new RequestVoteResponse(nodeInfo.name(), nodeInfo.name(), term, false, 0);
 
-        //this.traceMessages.addToBag(response);
-        //this.traceMessages.removeFromBag(requestVoteRequest);
+            //this.traceMessages.addToBag(response);
+            //this.traceMessages.removeFromBag(requestVoteRequest);
 
-        this.traceVotedFor.getField(this.nodeInfo.name()).update(nodeInfo.name());
-        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name(), requestVoteRequest});
-        
-        //this.traceMessages.removeFromBag(response);
-        this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
-        this.traceVotesResponded.getField(this.nodeInfo.name()).add(nodeInfo.name());    
-        tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
+            this.traceVotedFor.getField(this.nodeInfo.name()).update(nodeInfo.name());
+            tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),nodeInfo.name(), requestVoteRequest});
+            
+            //this.traceMessages.removeFromBag(response);
+            this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
+            this.traceVotesResponded.getField(this.nodeInfo.name()).add(nodeInfo.name());    
+            tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        }
 
         sendVoteRequest();
     }
@@ -371,7 +380,7 @@ public class Node {
         else if (message instanceof final RequestVoteResponse requestVoteResponse){
             
             if(requestVoteResponse.getTerm() < term){
-                this.traceMessages.removeFromBag(message);
+                if(classic_raft) this.traceMessages.removeFromBag(message);
             } else if(message.getTerm() == term){
                 handleVoteReply(requestVoteResponse);
             }
@@ -385,7 +394,7 @@ public class Node {
         }
         else if (message instanceof final AppendEntriesResponse appendEntriesResponse) {
             if(appendEntriesResponse.getTerm() < term){
-                this.traceMessages.removeFromBag(message);
+                if(classic_raft) this.traceMessages.removeFromBag(message);
             } else if(message.getTerm() == term){
                 handleAppendEntriesResponse(appendEntriesResponse);
             }
@@ -403,13 +412,14 @@ public class Node {
         toFollower();
         this.votedFor = "";
 
-        this.traceCurrentTerm.getField(this.nodeInfo.name()).update(newTerm);
-        String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
-        this.traceState.getField(this.nodeInfo.name()).update(stateString);
-        this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
+        if(classic_raft){
+            this.traceCurrentTerm.getField(this.nodeInfo.name()).update(newTerm);
+            String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+            this.traceState.getField(this.nodeInfo.name()).update(stateString);
+            this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
 
-        // OK : trace UpdateTerm
-        tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
+            tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
+        }
     }
 
     /**
@@ -461,10 +471,10 @@ public class Node {
 
             final Message message = new RequestVoteRequest(nodeInfo.name(), ni.name(), term, getLastLogTerm(), getLastLogIndex(),0);
 
-            this.traceMessages.addToBag(message);
-
-            // OK : trace RequestVote
-            tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),ni.name()});
+            if(classic_raft){
+                this.traceMessages.addToBag(message);
+                tracer.log("RequestVoteRequest", new Object[] {nodeInfo.name(),ni.name()});
+            }
 
             network.send(ni.name(),message);
         }
@@ -487,22 +497,26 @@ public class Node {
         if (m.getTerm() <= term) {
             if(grant){
                 votedFor = m.getFrom();
-                this.traceVotedFor.getField(this.nodeInfo.name()).update(m.getFrom());
+                
+                if(classic_raft){
+                    this.traceVotedFor.getField(this.nodeInfo.name()).update(m.getFrom());
+                }
             }
-            
             // Reply to vote request
             final Message response = new RequestVoteResponse(nodeInfo.name(), m.getFrom(), term, grant, 0);
 
-            // BUG : reply
-            // this.traceMessages.addToBag(response);
-            // this.traceMessages.removeFromBag(m);
+            if(classic_raft){
+                // BUG : reply
+                // this.traceMessages.addToBag(response);
+                // this.traceMessages.removeFromBag(m);
+            }
 
             network.send(m.getFrom(),response);
         }
 
-        // OK : trace HandleRequestVoteRequest
-        tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom(),m});
-        
+        if(classic_raft){
+            tracer.log("HandleRequestVoteRequest", new Object[] {nodeInfo.name(),m.getFrom(),m});
+        }    
     }
 
     /**
@@ -538,18 +552,21 @@ public class Node {
             // Add node that granted a vote to me
             candidateState.getGranted().add(m.getFrom());
 
-            this.traceVotesGranted.getField(this.nodeInfo.name()).add(m.getFrom());
+            if(classic_raft){
+                this.traceVotesGranted.getField(this.nodeInfo.name()).add(m.getFrom());
+            }
         }
 
         assert m.getTerm() == term : "Term should be the same.";
 
-        // BUG : remove message from bag
-        //this.traceMessages.removeFromBag(m);
+        if(classic_raft){
+            // BUG : remove message from bag
+            //this.traceMessages.removeFromBag(m);
 
-        this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
+            this.traceVotesResponded.getField(this.nodeInfo.name()).add(m.getFrom());
 
-        // OK : trace HandleRequestVoteResponse
-        tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
+            tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
+        }
 
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
             becomeLeader();
@@ -571,28 +588,32 @@ public class Node {
         sendHeartbeat();
         System.out.printf("Node %s is Leader.\n", nodeInfo.name());
 
-        traceState.getField(nodeInfo.name()).update("Leader");
+        if(classic_raft){
+            traceState.getField(nodeInfo.name()).update("Leader");
+        }
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
             leaderState.getNextIndexes().put(ni.name(), logs.size() + 1);
             leaderState.getMatchIndexes().put(ni.name(), 0);
-
-            this.traceNextIndex.getField(this.nodeInfo.name()).setKey(ni.name(), logs.size() + 1);
-            this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(ni.name(), 0);
+            
+            if(classic_raft){
+                this.traceNextIndex.getField(this.nodeInfo.name()).setKey(ni.name(), logs.size() + 1);
+                this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(ni.name(), 0);
+            }
         }
 
-        // TODO : election' ?
+        if(classic_raft){            
+            // TODO : election' ?
+            /* /\ elections'  = elections \cup
+            {[eterm     |-> currentTerm[i],
+            eleader   |-> i,
+            elog      |-> log[i],
+            evotes    |-> votesGranted[i] (this is the set of servers from which the candidate has received a vote in its currentTerm)*/
+            
+            //this.traceElections.add(Map.of("eterm", term, "eleader", nodeInfo.name()));
 
-        /* /\ elections'  = elections \cup
-        {[eterm     |-> currentTerm[i],
-          eleader   |-> i,
-          elog      |-> log[i],
-          evotes    |-> votesGranted[i] (this is the set of servers from which the candidate has received a vote in its currentTerm)*/
-        
-        //this.traceElections.add(Map.of("eterm", term, "eleader", nodeInfo.name()));
-
-        // OK : trace BecomeLeader
-        tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
+            tracer.log("BecomeLeader", new Object[] { nodeInfo.name() });
+        }
     }
 
     /**
@@ -612,11 +633,12 @@ public class Node {
 
         System.out.printf("Node %s receive a client request and add entry %s.\n", nodeInfo.name(), entry);
 
-        this.traceLog.getField(nodeInfo.name()).append(entry);
-
-        // OK : trace ClientRequest
-        tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
+        if(classic_raft){
+            this.traceLog.getField(nodeInfo.name()).append(entry);
+            tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
+        }
     }
+
 
     /**
      * Sends append entries requests to all nodes in the cluster except for the current node.
@@ -668,13 +690,13 @@ public class Node {
             0
         );
 
-        this.traceMessages.addToBag(appendEntriesRequest);
-    
         System.out.println("Sending AppendEntriesRequest to node: " + nodeName);
         
-        // OK : trace AppendEntries
-        tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });
-    
+        if(classic_raft){
+            this.traceMessages.addToBag(appendEntriesRequest);
+            tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });    
+        }
+
         network.send(nodeName, appendEntriesRequest);
     }    
 
@@ -708,10 +730,10 @@ public class Node {
             commitIndex = maxAgreeIndex;
         }
 
-        this.traceCommitIndex.getField(this.nodeInfo.name()).update(commitIndex);
-
-        // OK : trace AdvanceCommitIndex
-        tracer.log("AdvanceCommitIndex", new Object[] { nodeInfo.name() });
+        if(classic_raft){
+            this.traceCommitIndex.getField(this.nodeInfo.name()).update(commitIndex);
+            tracer.log("AdvanceCommitIndex", new Object[] { nodeInfo.name() });
+        }
     }
 
     /**
@@ -735,11 +757,12 @@ public class Node {
             if (appendEntriesRequest.getTerm() == term){
                 toFollower();
 
-                String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
-                this.traceState.getField(this.nodeInfo.name()).update(stateString);
+                if(classic_raft){
+                    String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
+                    this.traceState.getField(this.nodeInfo.name()).update(stateString);
 
-                // OK : trace HandleAppendEntriesRequest
-                tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+                    tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+                }
             }
         }
         else if (state == NodeState.Follower) {
@@ -751,8 +774,9 @@ public class Node {
 
         System.out.printf("--- NODE %s ENTRIES %s.\n", nodeInfo.name(), logs);
 
-        // OK : trace HandleAppendEntriesRequest
-        tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+        if(classic_raft){
+            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+        }
     }
 
     /**
@@ -774,13 +798,11 @@ public class Node {
 
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
 
-            // Add to trace
-            reply(appendEntriesResponse, appendEntriesRequest);
-
-            this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
-
-            // OK : trace HandleAppendEntriesRequest
-            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+            if(classic_raft){
+                reply(appendEntriesResponse, appendEntriesRequest);
+                this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
+                tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+            }
 
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
         }
@@ -790,27 +812,20 @@ public class Node {
             System.out.print("Conflict.\n");
             logs.remove(logs.size() - 1);
 
-           
-            /* List<Entry> newEntries = new ArrayList<>();
-            for (int i = 0; i < logs.size() - 1; i++) {
-                newEntries.add(logs.get(i));
+            if(classic_raft){
+                tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             }
-
-            this.traceLog.getField(nodeInfo.name()).update(newEntries); */
-
-            // OK : trace HandleAppendEntriesRequest
-            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
         }
 
         // No conflict append entries
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
             System.out.print("No conflict.\n");
             logs.addAll(appendEntriesRequest.getEntries());
-                                      
-            this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
-
-            // OK : trace HandleAppendEntriesRequest
-            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+                        
+            if(classic_raft){
+                this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
+                tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+            }
         }
     }
 
@@ -832,24 +847,27 @@ public class Node {
             int matchIndex = (int)appendEntriesResponse.getMatchIndex();
             int nextIndex = matchIndex + 1;
             leaderState.getNextIndexes().put(fromNodeName, nextIndex);
-            
-            this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, nextIndex);
-
             leaderState.getMatchIndexes().put(fromNodeName, matchIndex);
+            
+            if(classic_raft){
+                this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, nextIndex);
+                this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, matchIndex);
+            }
 
-            this.traceMatchIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, matchIndex);
         } else {
             int nextIndex = leaderState.getNextIndexes().get(fromNodeName);
             leaderState.getNextIndexes().put(fromNodeName, Math.max(nextIndex - 1, 1));
 
-            this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, Math.max(nextIndex - 1, 1));
+            if(classic_raft){
+                this.traceNextIndex.getField(this.nodeInfo.name()).setKey(fromNodeName, Math.max(nextIndex - 1, 1));
+            }
         }
 
-        this.traceMessages.removeFromBag(appendEntriesResponse);
-
-        // OK : trace HandleAppendEntriesResponse
-        tracer.log("HandleAppendEntriesResponse", new Object[] { nodeInfo.name(), fromNodeName });
-
+        if(classic_raft){
+            this.traceMessages.removeFromBag(appendEntriesResponse);
+            tracer.log("HandleAppendEntriesResponse", new Object[] { nodeInfo.name(), fromNodeName });
+        }
+        
         advanceCommitIndex();
     }
 
@@ -864,11 +882,10 @@ public class Node {
         String to = appendEntriesRequest.getFrom();
         Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), to, term, false, 0, 0);
 
-        // Add to trace
-        reply(appendEntriesResponse, appendEntriesRequest);
-
-        // OK : trace HandleAppendEntriesRequest
-        tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), to });
+        if(classic_raft){
+            reply(appendEntriesResponse, appendEntriesRequest);
+            tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), to });
+        }
 
         network.send(to, appendEntriesResponse);
     }

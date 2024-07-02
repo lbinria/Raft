@@ -18,252 +18,126 @@ TraceServer ==
 TraceValue ==
     ToSet(Trace[1].Value)
 
+(* Replace Quorum constant *)
+TraceQuorum ==
+    ToSet(Trace[1].Quorum)
+
+(* Replace MaxTerm constant *)
+TraceMaxTerm ==
+    Trace[1].MaxTerm
+
+(* Replace MaxEntries constant *)
+TraceMaxEntries ==
+    Trace[1].MaxEntries
+
 (* Can be extracted from init *)
 RADefault(varName) ==
-    CASE varName = "currentTerm" -> [i \in Server |-> 1]
-    []  varName = "state" -> [i \in Server |-> Follower]
-    []  varName = "votedFor" -> [i \in Server |-> Nil]
-    []  varName = "votesResponded" -> [i \in Server |-> {}]
-    []  varName = "votesGranted" -> [i \in Server |-> {}]
-    []  varName = "nextIndex" -> [i \in Server |-> [j \in Server |-> 1]]
-    []  varName = "matchIndex" -> [i \in Server |-> [j \in Server |-> 0]]
-    []  varName = "messages" -> [m \in {} |-> 0]
-    []  varName = "log" -> [i \in Server |-> << >>]
-    []  varName = "commitIndex" -> [i \in Server |-> 0]
+    CASE varName = "entries" -> [i \in Server |-> << >>]
+    []  varName = "commitIdx" -> [i \in Server |-> 0]
+    []  varName = "role" -> [i \in Server |-> "follower"]
+    []  varName = "term" -> [i \in Server |-> 0]
+    []  varName = "ballots" -> [i \in Server |-> {}]
+    []  varName = "ghostEntries" -> [i \in Server |-> [n \in NatSubset |-> {}]]
 
 RAMapVariables(t) ==
     /\
-        IF "currentTerm" \in DOMAIN t
-        THEN currentTerm' = UpdateVariable(currentTerm, "currentTerm", t)
+        IF "entries" \in DOMAIN t
+        THEN entries' = UpdateVariable(entries, "entries", t)
         ELSE TRUE
     /\
-        IF "state" \in DOMAIN t
-        THEN state' = UpdateVariable(state, "state", t)
+        IF "commitIdx" \in DOMAIN t
+        THEN commitIdx' = UpdateVariable(commitIdx, "commitIdx", t)
         ELSE TRUE
     /\
-        IF "votedFor" \in DOMAIN t
-        THEN votedFor' = UpdateVariable(votedFor, "votedFor", t)
+        IF "role" \in DOMAIN t
+        THEN role' = UpdateVariable(role, "role", t)
         ELSE TRUE
     /\
-        IF "votesResponded" \in DOMAIN t
-        THEN votesResponded' = UpdateVariable(votesResponded, "votesResponded", t)
+        IF "term" \in DOMAIN t
+        THEN term' = UpdateVariable(term, "term", t)
         ELSE TRUE
     /\
-        IF "votesGranted" \in DOMAIN t
-        THEN votesGranted' = UpdateVariable(votesGranted, "votesGranted", t)
+        IF "ballots" \in DOMAIN t
+        THEN ballots' = UpdateVariable(ballots, "ballots", t)
         ELSE TRUE
     /\
-        IF "nextIndex" \in DOMAIN t
-        THEN nextIndex' = UpdateVariable(nextIndex, "nextIndex", t)
+        IF "ghostEntries" \in DOMAIN t
+        THEN ghostEntries' = UpdateVariable(ghostEntries, "ghostEntries", t)
         ELSE TRUE
-    /\
-        IF "matchIndex" \in DOMAIN t
-        THEN matchIndex' = UpdateVariable(matchIndex, "matchIndex", t)
-        ELSE TRUE
-    /\
-        IF "messages" \in DOMAIN t
-        THEN messages' = UpdateVariable(messages, "messages", t)
-        ELSE TRUE
-    /\
-        IF "log" \in DOMAIN t
-        THEN log' = UpdateVariable(log, "log", t)
-        ELSE TRUE
-    /\
-        IF "commitIndex" \in DOMAIN t
-        THEN commitIndex' = UpdateVariable(commitIndex, "commitIndex", t)
-        ELSE TRUE
-    /\
-        IF "elections" \in DOMAIN t
-        THEN elections' = UpdateVariable(elections, "elections", t)
-        ELSE TRUE
-
-IsDuplicateMessage ==
-    /\ IsEvent("DuplicateMessage")
-    /\
-        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            DuplicateMessage(logline.event_args[1])
-        ELSE
-            \E m \in DOMAIN messages : DuplicateMessage(m)
-
-IsDropMessage ==
-    /\ IsEvent("DropMessage")
-    /\
-        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            DropMessage(logline.event_args[1])
-        ELSE
-            \E m \in DOMAIN messages : DropMessage(m)
-
-IsRestart ==
-    /\ IsEvent("Restart")
-    /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ Restart(logline.node)
-        \/
-            \E i \in Server : Restart(i)
 
 IsTimeout ==
     /\ IsEvent("Timeout")
     /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ Timeout(logline.node)
-        \/
-            /\ \E i \in Server : Timeout(i)
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            Vote(logline.event_args[1])
+        ELSE
+            \E i \in Server : Timeout(i)
 
-IsRequestVote ==
-    /\ IsEvent("RequestVoteRequest")
-    /\
-        \/
-            /\ "src" \in DOMAIN logline
-            /\ "dest" \in DOMAIN logline
-            /\ RequestVote(logline.src, logline.dest)
-        \/
-            /\ \E i,j \in Server : RequestVote(i, j)
-
-IsBecomeLeader ==
-    /\ IsEvent("BecomeLeader")
-    /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ BecomeLeader(logline.node)
-        \/
-            /\ \E i \in Server : BecomeLeader(i)
-
-IsHandleRequestVoteRequest ==
-    /\ IsEvent("HandleRequestVoteRequest")
+IsVote ==
+    /\ IsEvent("Vote")
     /\
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            HandleRequestVoteRequest(logline.event_args[1],logline.event_args[2],logline.event_args[3])
+            Vote(logline.event_args[1])
         ELSE
-            \E m \in DOMAIN messages :
-                LET i == m.mdest
-                j == m.msource IN
-                /\ HandleRequestVoteRequest(i, j, m)
+            \E s \in Server : Vote(s)
 
-IsHandleRequestVoteResponse ==
-    /\ IsEvent("HandleRequestVoteResponse")
-    /\ \E m \in DOMAIN messages :
+IsElectLeader ==
+    /\ IsEvent("ElectLeader")
+    /\
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            /\ logline.event_args[1] = m.mdest
-            /\ logline.event_args[2] = m.msource
-            /\ m.mtype = RequestVoteResponse
-            /\ HandleRequestVoteResponse(logline.event_args[1],logline.event_args[2],m)
+            ElectLeader(logline.event_args[1])
         ELSE
-            LET i == m.mdest
-            j == m.msource IN
-            /\ m.mtype = RequestVoteResponse
-            /\ HandleRequestVoteResponse(i, j, m)
+            \E s \in Server : ElectLeader(s)
 
 IsUpdateTerm ==
     /\ IsEvent("UpdateTerm")
-    /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        UpdateTerm(i, j, m)
-
-IsClientRequest ==
-    /\ IsEvent("ClientRequest")
     /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ "val" \in DOMAIN logline
-            /\ ClientRequest(logline.node, logline.val)
-        \/
-            /\ \E i \in Server, v \in Value : ClientRequest(i, v)
-
-IsAppendEntries ==
-    /\ IsEvent("AppendEntries")
-    (* /\ \E m \in DOMAIN messages :
-=== TODO benjamin check, source, dest may be inverted, moreover I think I should use \E i,j \in Server instead of messages
-        LET i == m.mdest
-        j == m.msource IN
-        AppendEntries(i, j) *)
-    /\ \E m \in DOMAIN messages :
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            /\ logline.event_args[1] = m.mdest
-            /\ logline.event_args[2] = m.msource
-            /\ AppendEntries(logline.event_args[1],logline.event_args[2])
+            UpdateTerm(logline.event_args[1])
         ELSE
-            LET i == m.mdest
-            j == m.msource IN
-            /\ AppendEntries(i, j)
+            \E s \in Server : UpdateTerm(s)
 
-IsAdvanceCommitIndex ==
-    /\ IsEvent("AdvanceCommitIndex")
-    (* /\
-        \/
-            /\ "node" \in DOMAIN logline
-            /\ AdvanceCommitIndex(logline.node)
-        \/
-            /\ \E i \in Server : AdvanceCommitIndex(i) *)
-    /\ \E m \in DOMAIN messages :
+IsAppendEntry ==
+    /\ IsEvent("AppendEntry")
+    /\
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            /\ logline.event_args[1] = m.mdest
-            /\ AdvanceCommitIndex(logline.event_args[1])
+            AppendEntry(logline.event_args[1])
         ELSE
-            LET i == m.mdest IN
-            /\ AdvanceCommitIndex(i)
+            \E s \in Server : AppendEntry(s)
 
-IsHandleAppendEntriesRequest ==
-    /\ IsEvent("HandleAppendEntriesRequest")
-    (* /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        /\ m.mtype = AppendEntriesRequest
-        /\ HandleAppendEntriesRequest(i, j, m) *)
-
-    /\ \E m \in DOMAIN messages :
+IsLearnEntry ==
+    /\ IsEvent("LearnEntry")
+    /\
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            /\ logline.event_args[1] = m.mdest
-            /\ logline.event_args[2] = m.msource
-            /\ m.mtype = AppendEntriesRequest
-            /\ HandleAppendEntriesRequest(logline.event_args[1],logline.event_args[2],m)
+            LearnEntry(logline.event_args[1])
         ELSE
-            LET i == m.mdest
-            j == m.msource IN
-            /\ m.mtype = AppendEntriesRequest
-            /\ HandleAppendEntriesRequest(i, j, m)
+            \E s \in Server : LearnEntry(s)
 
-IsHandleAppendEntriesResponse ==
-    /\ IsEvent("HandleAppendEntriesResponse")
-    (* /\ \E m \in DOMAIN messages :
-        LET i == m.mdest
-        j == m.msource IN
-        /\ m.mtype = AppendEntriesResponse
-        /\ HandleAppendEntriesResponse(i, j, m) *)
-
-    /\ \E m \in DOMAIN messages :
+IsLeaderCommit ==
+    /\ IsEvent("LeaderCommit")
+    /\
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
-            /\ logline.event_args[1] = m.mdest
-            /\ logline.event_args[2] = m.msource
-            /\ m.mtype = AppendEntriesResponse
-            /\ HandleAppendEntriesResponse(logline.event_args[1],logline.event_args[2],m)
+            LeaderCommit(logline.event_args[1])
         ELSE
-            LET i == m.mdest
-            j == m.msource IN
-            /\ m.mtype = AppendEntriesResponse
-            /\ HandleAppendEntriesResponse(i, j, m)
+            \E s \in Server : LeaderCommit(s)
+
+IsNonLeaderCommit ==
+    /\ IsEvent("NonLeaderCommit")
+    /\
+        IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
+            NonLeaderCommit(logline.event_args[1])
+        ELSE
+            \E s \in Server : NonLeaderCommit(s)
 
 RATraceNext ==
-    /\
-        \/ IsDuplicateMessage
-        \/ IsDropMessage
-        \/ IsRestart
-        \/ IsTimeout
-        \/ IsRequestVote
-        \/ IsBecomeLeader
-        \/ IsHandleRequestVoteRequest
-        \/ IsHandleRequestVoteResponse
-        \/ IsUpdateTerm
-        \/ IsClientRequest
-        \/ IsAppendEntries
-        \/ IsAdvanceCommitIndex
-        \/ IsHandleAppendEntriesRequest
-        \/ IsHandleAppendEntriesResponse
-    /\ allLogs' = allLogs \cup {log[i] : i \in Server}
-
-
+    \/ IsTimeout
+    \/ IsVote
+    \/ IsElectLeader
+    \/ IsUpdateTerm
+    \/ IsAppendEntry
+    \/ IsLearnEntry
+    \/ IsLeaderCommit
+    \/ IsNonLeaderCommit
 
 ComposedNext == FALSE
 

@@ -73,7 +73,7 @@ public class Node {
         return logs.isEmpty() ? 0 : logs.get(logs.size() - 1).getTerm();
     }
 
-    // Trace variables
+    // Trace variables (classic Raft)
     private final VirtualField traceState;
     private final VirtualField traceVotedFor;
     private final VirtualField traceVotesResponded;
@@ -86,8 +86,11 @@ public class Node {
     private final VirtualField traceMessages;
     private final VirtualField traceElections;
 
+    // Trace variables (abstract Raft)
+    private final VirtualField traceRole;
+
     private final boolean classic_raft = false;
-    private final boolean abstract_raft = false;
+    private final boolean abstract_raft = true;
 
     public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer) {
         this.clusterInfo = clusterInfo;
@@ -126,6 +129,7 @@ public class Node {
         this.traceLog = tracer.getVariableTracer("log");
         this.traceMessages = tracer.getVariableTracer("messages");
         this.traceElections = tracer.getVariableTracer("elections");
+        this.traceRole = tracer.getVariableTracer("role");
     }
 
     private void setState(NodeState state) {
@@ -330,6 +334,11 @@ public class Node {
             tracer.log("Timeout", new Object[] { nodeInfo.name() });
         }
 
+        if(abstract_raft){
+            //this.traceRole.getField(this.nodeInfo.name()).update("candidate");
+            tracer.log("Timeout", new Object[] { nodeInfo.name() });
+        }
+
         System.out.printf("Node %s is %s.\n", nodeInfo.name(), state);
 
         if(classic_raft){
@@ -351,6 +360,10 @@ public class Node {
             this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
             this.traceVotesResponded.getField(this.nodeInfo.name()).add(nodeInfo.name());    
             tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
+        }
+
+        if(abstract_raft){
+            tracer.log("Vote", new Object[] {nodeInfo.name()});
         }
 
         sendVoteRequest();
@@ -419,6 +432,10 @@ public class Node {
             this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
 
             tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
+        }
+
+        if(abstract_raft){
+            //tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
         }
     }
 
@@ -568,6 +585,12 @@ public class Node {
             tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
         }
 
+        if(abstract_raft){
+            if (m.getTerm() <= this.term) 
+                tracer.log("Vote", new Object[] {m.getFrom()});
+        }
+    
+
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
             becomeLeader();
         }
@@ -590,6 +613,10 @@ public class Node {
 
         if(classic_raft){
             traceState.getField(nodeInfo.name()).update("Leader");
+        }
+
+        if(abstract_raft){
+            tracer.log("ElectLeader"/* , new Object[] {nodeInfo.name()} */);
         }
 
         for (NodeInfo ni : clusterInfo.getNodes()) {

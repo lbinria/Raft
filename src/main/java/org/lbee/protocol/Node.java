@@ -335,7 +335,7 @@ public class Node {
         }
 
         if(abstract_raft){
-            //this.traceRole.getField(this.nodeInfo.name()).update("candidate");
+            this.traceRole.getField(this.nodeInfo.name()).update("candidate");
             tracer.log("Timeout", new Object[] { nodeInfo.name() });
         }
 
@@ -360,10 +360,6 @@ public class Node {
             this.traceVotesGranted.getField(this.nodeInfo.name()).add(nodeInfo.name());
             this.traceVotesResponded.getField(this.nodeInfo.name()).add(nodeInfo.name());    
             tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),nodeInfo.name()});
-        }
-
-        if(abstract_raft){
-            tracer.log("Vote", new Object[] {nodeInfo.name()});
         }
 
         sendVoteRequest();
@@ -435,7 +431,7 @@ public class Node {
         }
 
         if(abstract_raft){
-            //tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
+            tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
         }
     }
 
@@ -496,7 +492,6 @@ public class Node {
             network.send(ni.name(),message);
         }
     }
-
 
     /**
      * Handles a vote request from a candidate node.
@@ -616,7 +611,7 @@ public class Node {
         }
 
         if(abstract_raft){
-            tracer.log("ElectLeader"/* , new Object[] {nodeInfo.name()} */);
+            tracer.log("ElectLeader", new Object[] {nodeInfo.name()});
         }
 
         for (NodeInfo ni : clusterInfo.getNodes()) {
@@ -664,8 +659,11 @@ public class Node {
             this.traceLog.getField(nodeInfo.name()).append(entry);
             tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
         }
-    }
 
+        if(abstract_raft){
+            tracer.log("AppendEntry", new Object[] { nodeInfo.name() });
+        }
+    }
 
     /**
      * Sends append entries requests to all nodes in the cluster except for the current node.
@@ -754,12 +752,21 @@ public class Node {
 
         if (maxAgreeIndex != -1 && logs.get(maxAgreeIndex - 1).getTerm() == term) {
             System.out.printf("SET NEW COMMIT INDEX %s.\n", maxAgreeIndex);
-            commitIndex = maxAgreeIndex;
+
+            if (commitIndex != maxAgreeIndex) {
+                commitIndex = maxAgreeIndex;
+    
+                tracer.log("LeaderCommit", new Object[] { nodeInfo.name() });
+            }
         }
 
         if(classic_raft){
             this.traceCommitIndex.getField(this.nodeInfo.name()).update(commitIndex);
             tracer.log("AdvanceCommitIndex", new Object[] { nodeInfo.name() });
+        }
+
+        if(abstract_raft){
+            tracer.log("NonLeaderCommit");
         }
     }
 
@@ -820,7 +827,7 @@ public class Node {
             System.out.print("Already done.\n");
 
             commitIndex = appendEntriesRequest.getCommitIndex();
-            
+    
             int matchIndex = (int)appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size();
 
             Message appendEntriesResponse = new AppendEntriesResponse(nodeInfo.name(), appendEntriesRequest.getFrom(), term, true, matchIndex, 0);
@@ -829,6 +836,12 @@ public class Node {
                 reply(appendEntriesResponse, appendEntriesRequest);
                 this.traceCommitIndex.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
                 tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
+            }
+
+            if(abstract_raft){
+                if (state == NodeState.Follower) {
+                    tracer.log("LearnEntry", new Object[] { nodeInfo.name() });
+                }
             }
 
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
@@ -916,7 +929,6 @@ public class Node {
 
         network.send(to, appendEntriesResponse);
     }
-
 
     /**
      * Shuts down the node by stopping the network.

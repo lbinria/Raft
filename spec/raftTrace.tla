@@ -71,7 +71,7 @@ IsTimeout ==
         IF "event_args" \in DOMAIN logline /\ Len(logline.event_args) >= 1 THEN
             Timeout(logline.event_args[1])
         ELSE
-            \E i \in Server : Timeout(i)
+            \E s \in Server : Timeout(s)
 
 IsVote ==
     /\ IsEvent("Vote")

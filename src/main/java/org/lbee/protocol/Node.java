@@ -88,6 +88,11 @@ public class Node {
 
     // Trace variables (abstract Raft)
     private final VirtualField traceRole;
+    private final VirtualField traceTerm;
+    private final VirtualField traceBallots;
+    private final VirtualField traceGhostEntries;
+    private final VirtualField traceEntries;
+    private final VirtualField traceCommitIdx;
 
     private final boolean classic_raft = false;
     private final boolean abstract_raft = true;
@@ -130,6 +135,11 @@ public class Node {
         this.traceMessages = tracer.getVariableTracer("messages");
         this.traceElections = tracer.getVariableTracer("elections");
         this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
+        this.traceBallots = tracer.getVariableTracer("ballots");
+        this.traceGhostEntries = tracer.getVariableTracer("ghostEntries");
+        this.traceEntries = tracer.getVariableTracer("entries");
+        this.traceCommitIdx = tracer.getVariableTracer("commitIdx");
     }
 
     private void setState(NodeState state) {
@@ -241,7 +251,7 @@ public class Node {
 
         // Restart node randomly
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 8) == 0) {
+            if ((randEvent.nextInt(0, 8) == 0) && (this.state == NodeState.Follower || this.state == NodeState.Candidate)) {
                 try {
                     restart();
                 } catch (InterruptedException | IOException e) {
@@ -281,7 +291,7 @@ public class Node {
             sendHeartbeatTrigger.run();
             // Start new election if it hasn+'t received heartbeat for some time
             if (System.currentTimeMillis() >= lastHeartbeat + electionTimeout
-                    && (state == NodeState.Follower || state == NodeState.Candidate)){
+                    && (this.state == NodeState.Follower || this.state == NodeState.Candidate)){
                 timeout();
             }
 
@@ -336,6 +346,9 @@ public class Node {
 
         if(abstract_raft){
             this.traceRole.getField(this.nodeInfo.name()).update("candidate");
+            this.traceTerm.getField(this.nodeInfo.name()).update(term);
+            //this.traceBallots.getField(this.nodeInfo.name()).add(term);
+
             tracer.log("Timeout", new Object[] { nodeInfo.name() });
         }
 
@@ -431,6 +444,8 @@ public class Node {
         }
 
         if(abstract_raft){
+            this.traceRole.getField(this.nodeInfo.name()).update("follower");
+            this.traceTerm.getField(this.nodeInfo.name()).update(newTerm);
             tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
         }
     }
@@ -581,11 +596,13 @@ public class Node {
         }
 
         if(abstract_raft){
-            if (m.getTerm() <= this.term) 
-                tracer.log("Vote", new Object[] {m.getFrom()});
+            this.traceRole.getField(m.getFrom()).update("follower");
+            this.traceTerm.getField(m.getFrom()).update(this.term);
+            // /\ ballots' = [ballots EXCEPT ![s] = @ union {<<cdt, term[cdt]>>}]
+            //this.traceBallots.getField(this.nodeInfo.name()).update(0);
+            tracer.log("Vote", new Object[] {m.getFrom()});
         }
     
-
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
             becomeLeader();
         }
@@ -611,6 +628,7 @@ public class Node {
         }
 
         if(abstract_raft){
+            this.traceRole.getField(this.nodeInfo.name()).update("leader");
             tracer.log("ElectLeader", new Object[] {nodeInfo.name()});
         }
 
@@ -660,7 +678,17 @@ public class Node {
             tracer.log("ClientRequest", new Object[] { nodeInfo.name(), entry_value });
         }
 
+        /*/\ \E v \in Value : 
+          LET entry == [val |-> v, term |-> term[s]]
+          IN  /\ entries' = [entries EXCEPT ![s] = Append(@, entry)]
+              /\ ghostEntries' = [ghostEntries EXCEPT ![s] = 
+                                    [@ EXCEPT ![Len(entries[s])+1] = 
+                                       ghostEntries[s][Len(entries[s])+1] union {entry}]] */
+
+                                       
         if(abstract_raft){
+            //this.traceEntries.getField(nodeInfo.name()).append(entry);
+            //this.traceGhostEntries.getField(this.nodeInfo.name()).setKey(logs.size() + 1, entry_val);
             tracer.log("AppendEntry", new Object[] { nodeInfo.name() });
         }
     }
@@ -732,7 +760,7 @@ public class Node {
      *
      * @throws IOException if an I/O error occurs while updating the commit index.
      */
-    private void advanceCommitIndex() throws IOException {
+    private void advanceCommitIndex(String fromNodeName) throws IOException {
 
         if (state != NodeState.Leader)
             return;
@@ -755,8 +783,11 @@ public class Node {
 
             if (commitIndex != maxAgreeIndex) {
                 commitIndex = maxAgreeIndex;
-    
-                tracer.log("LeaderCommit", new Object[] { nodeInfo.name() });
+
+                if(abstract_raft){
+                    this.traceCommitIdx.getField(this.nodeInfo.name()).update(commitIndex);
+                    tracer.log("LeaderCommit", new Object[] { nodeInfo.name() });
+                }
             }
         }
 
@@ -766,6 +797,7 @@ public class Node {
         }
 
         if(abstract_raft){
+            this.traceCommitIdx.getField(fromNodeName).update(commitIndex);
             tracer.log("NonLeaderCommit");
         }
     }
@@ -826,6 +858,7 @@ public class Node {
         if (appendEntriesRequest.getEntries().isEmpty() || (logs.size() >= index && logs.get(index - 1).getTerm() == appendEntriesRequest.getEntries().get(0).getTerm())) {
             System.out.print("Already done.\n");
 
+            // Update commit index of the follower
             commitIndex = appendEntriesRequest.getCommitIndex();
     
             int matchIndex = (int)appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size();
@@ -838,10 +871,31 @@ public class Node {
                 tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             }
 
+            /* 
+            LearnEntry(s) ==
+                /\ role[s] = "follower"
+                /\ \E ldr \in Server :
+                    /\ term[ldr] >= term[s]
+                    /\ role[ldr] = "leader"
+                    /\ \E n \in 1 .. Min(Len(entries[s])+1, Len(entries[ldr])) :
+                            /\ n \in 1 .. Len(entries[s]) => 
+                                entries[s][n].term # entries[ldr][n].term
+                            /\ n-1 \in 1 .. Len(entries[s]) => 
+                                entries[s][n-1].term = entries[ldr][n-1].term
+                            /\ entries' = [entries EXCEPT ![s] = 
+                                Append(SubSeq(entries[s], 1, n-1), entries[ldr][n])]
+                            /\ ghostEntries' = [ghostEntries EXCEPT ![s] =
+                                [@ EXCEPT ![n] = ghostEntries[s][n] union {entries[ldr][n]}]]
+                                make sure the commit index stays in range (should really never update)
+                            /\ commitIdx' = [commitIdx EXCEPT ![s] =
+                                IF n < @ THEN n ELSE @]
+                    /\ term' = [term EXCEPT ![s] = term[ldr]]
+                /\ UNCHANGED <<ballots, role>>
+            */
+
             if(abstract_raft){
-                if (state == NodeState.Follower) {
-                    tracer.log("LearnEntry", new Object[] { nodeInfo.name() });
-                }
+                this.traceCommitIdx.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
+                tracer.log("LearnEntry", new Object[] { nodeInfo.name() });
             }
 
             network.send(appendEntriesRequest.getFrom(), appendEntriesResponse);
@@ -908,7 +962,7 @@ public class Node {
             tracer.log("HandleAppendEntriesResponse", new Object[] { nodeInfo.name(), fromNodeName });
         }
         
-        advanceCommitIndex();
+        advanceCommitIndex(fromNodeName);
     }
 
     /**

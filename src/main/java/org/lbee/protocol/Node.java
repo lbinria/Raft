@@ -94,8 +94,8 @@ public class Node {
     private final VirtualField traceEntries;
     private final VirtualField traceCommitIdx;
 
-    private final boolean classic_raft = false;
-    private final boolean abstract_raft = true;
+    private final boolean classic_raft = true;
+    private final boolean abstract_raft = false;
 
     public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer) {
         this.clusterInfo = clusterInfo;
@@ -247,7 +247,7 @@ public class Node {
                 // throw new RuntimeException(e);
                 System.out.printf("Node %s couldn't heartbeat.\n", nodeInfo.name());
             }
-        }, 500);
+        }, 50000);
 
         // Restart node randomly
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
@@ -597,9 +597,10 @@ public class Node {
 
         if(abstract_raft){
             this.traceRole.getField(m.getFrom()).update("follower");
-            this.traceTerm.getField(m.getFrom()).update(this.term);
+            //this.traceTerm.getField(m.getFrom()).update(this.term);
             // /\ ballots' = [ballots EXCEPT ![s] = @ union {<<cdt, term[cdt]>>}]
-            //this.traceBallots.getField(this.nodeInfo.name()).update(0);
+
+            
             tracer.log("Vote", new Object[] {m.getFrom()});
         }
     
@@ -684,7 +685,6 @@ public class Node {
               /\ ghostEntries' = [ghostEntries EXCEPT ![s] = 
                                     [@ EXCEPT ![Len(entries[s])+1] = 
                                        ghostEntries[s][Len(entries[s])+1] union {entry}]] */
-
                                        
         if(abstract_raft){
             //this.traceEntries.getField(nodeInfo.name()).append(entry);
@@ -746,7 +746,7 @@ public class Node {
         System.out.println("Sending AppendEntriesRequest to node: " + nodeName);
         
         if(classic_raft){
-            this.traceMessages.addToBag(appendEntriesRequest);
+            //this.traceMessages.addToBag(appendEntriesRequest);
             tracer.log("AppendEntries", new Object[] { nodeInfo.name(), nodeName });    
         }
 
@@ -785,7 +785,7 @@ public class Node {
                 commitIndex = maxAgreeIndex;
 
                 if(abstract_raft){
-                    this.traceCommitIdx.getField(this.nodeInfo.name()).update(commitIndex);
+                    //this.traceCommitIdx.getField(this.nodeInfo.name()).update(commitIndex);
                     tracer.log("LeaderCommit", new Object[] { nodeInfo.name() });
                 }
             }
@@ -794,11 +794,6 @@ public class Node {
         if(classic_raft){
             this.traceCommitIndex.getField(this.nodeInfo.name()).update(commitIndex);
             tracer.log("AdvanceCommitIndex", new Object[] { nodeInfo.name() });
-        }
-
-        if(abstract_raft){
-            this.traceCommitIdx.getField(fromNodeName).update(commitIndex);
-            tracer.log("NonLeaderCommit");
         }
     }
 
@@ -871,30 +866,8 @@ public class Node {
                 tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });
             }
 
-            /* 
-            LearnEntry(s) ==
-                /\ role[s] = "follower"
-                /\ \E ldr \in Server :
-                    /\ term[ldr] >= term[s]
-                    /\ role[ldr] = "leader"
-                    /\ \E n \in 1 .. Min(Len(entries[s])+1, Len(entries[ldr])) :
-                            /\ n \in 1 .. Len(entries[s]) => 
-                                entries[s][n].term # entries[ldr][n].term
-                            /\ n-1 \in 1 .. Len(entries[s]) => 
-                                entries[s][n-1].term = entries[ldr][n-1].term
-                            /\ entries' = [entries EXCEPT ![s] = 
-                                Append(SubSeq(entries[s], 1, n-1), entries[ldr][n])]
-                            /\ ghostEntries' = [ghostEntries EXCEPT ![s] =
-                                [@ EXCEPT ![n] = ghostEntries[s][n] union {entries[ldr][n]}]]
-                                make sure the commit index stays in range (should really never update)
-                            /\ commitIdx' = [commitIdx EXCEPT ![s] =
-                                IF n < @ THEN n ELSE @]
-                    /\ term' = [term EXCEPT ![s] = term[ldr]]
-                /\ UNCHANGED <<ballots, role>>
-            */
-
             if(abstract_raft){
-                this.traceCommitIdx.getField(nodeInfo.name()).update(appendEntriesRequest.getCommitIndex());
+                //this.traceCommitIdx.getField(nodeInfo.name()).update(matchIndex-1);
                 tracer.log("LearnEntry", new Object[] { nodeInfo.name() });
             }
 
@@ -913,9 +886,26 @@ public class Node {
 
         // No conflict append entries
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
-            System.out.print("No conflict.\n");
+            System.out.print("-----------------No conflict.-------------------------\n");
+            // print commit index
+            System.out.printf("Commit index request %s.\n", appendEntriesRequest.getCommitIndex());
+            System.out.printf("Commit index node %s.\n", commitIndex);
+
+            // print logs
+            System.out.printf("Logs %s.\n", logs);
+
+            // print entries
+            System.out.printf("Entries %s.\n", appendEntriesRequest.getEntries());
+
+            // print match index
+            System.out.printf("Match index %s.\n", appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size());
+
             logs.addAll(appendEntriesRequest.getEntries());
-                        
+
+            if(abstract_raft){
+                tracer.log("NonLeaderCommit", new Object[] { nodeInfo.name() });
+            }
+         
             if(classic_raft){
                 this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
                 tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });

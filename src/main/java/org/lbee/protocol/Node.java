@@ -94,8 +94,8 @@ public class Node {
     private final VirtualField traceEntries;
     private final VirtualField traceCommitIdx;
 
-    private final boolean classic_raft = true;
-    private final boolean abstract_raft = false;
+    private final boolean classic_raft = false;
+    private final boolean abstract_raft = true;
 
     public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer) {
         this.clusterInfo = clusterInfo;
@@ -247,7 +247,7 @@ public class Node {
                 // throw new RuntimeException(e);
                 System.out.printf("Node %s couldn't heartbeat.\n", nodeInfo.name());
             }
-        }, 50000);
+        }, 5000);
 
         // Restart node randomly
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
@@ -601,7 +601,7 @@ public class Node {
             // /\ ballots' = [ballots EXCEPT ![s] = @ union {<<cdt, term[cdt]>>}]
 
             
-            tracer.log("Vote", new Object[] {m.getFrom()});
+            tracer.log("Vote", new Object[] { m.getFrom() });
         }
     
         if (state == NodeState.Candidate && candidateState.getGranted().size() > clusterInfo.getQuorum()) {
@@ -886,26 +886,13 @@ public class Node {
 
         // No conflict append entries
         if (!appendEntriesRequest.getEntries().isEmpty() && logs.size() == appendEntriesRequest.getLastLogIndex()) {
-            System.out.print("-----------------No conflict.-------------------------\n");
-            // print commit index
-            System.out.printf("Commit index request %s.\n", appendEntriesRequest.getCommitIndex());
-            System.out.printf("Commit index node %s.\n", commitIndex);
-
-            // print logs
-            System.out.printf("Logs %s.\n", logs);
-
-            // print entries
-            System.out.printf("Entries %s.\n", appendEntriesRequest.getEntries());
-
-            // print match index
-            System.out.printf("Match index %s.\n", appendEntriesRequest.getLastLogIndex() + appendEntriesRequest.getEntries().size());
-
             logs.addAll(appendEntriesRequest.getEntries());
-
-            if(abstract_raft){
+         
+            if(abstract_raft && appendEntriesRequest.getCommitIndex() > commitIndex){
                 tracer.log("NonLeaderCommit", new Object[] { nodeInfo.name() });
             }
-         
+
+
             if(classic_raft){
                 this.traceLog.getField(nodeInfo.name()).append(appendEntriesRequest.getEntries().get(0));
                 tracer.log("HandleAppendEntriesRequest", new Object[] { nodeInfo.name(), appendEntriesRequest.getFrom() });

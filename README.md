@@ -32,13 +32,26 @@ github maven registry) and run
 
 `mvn package`
 
-# Perform trace validation
+### Perform trace validation pipeline
 
-To check the conformity of the trace produced by the program, the
-script [trace_validation_pipeline.py](trace_validation_pipeline.py)
-can be used:
+To run the complete trace validation pipeline, the script [trace_validation_pipeline.py](trace_validation_pipeline.py) can be used with the following options:
 
-`python trace_validation_pipeline.py -c`
+- `-c`, `--compile`: (optional) Compile the implementation of Raft. If not specified, the script will not perform the compilation step.
+- `--config <file>`: (optional) Specify the configuration file. Defaults to `conf.ndjson` if not provided.
+- `--spec <file>`: (optional) Specify the TLA+ specification file. Defaults to `spec/raftTrace.tla` if not provided.
+
+#### Example usage
+
+Run the trace validation pipeline with compilation:
+```bash
+python trace_validation_pipeline.py -c
+```
+
+Run the trace validation pipeline with a custom TLA+ specification file:
+
+```bash
+python trace_validation_pipeline.py --spec spec_abstract/raftTrace.tla
+```
 
 It consists of the following steps:
 - clean old trace files

@@ -25,6 +25,7 @@ def get_files(config):
 parser = argparse.ArgumentParser("")
 parser.add_argument('-c', '--compile', type=bool, action=argparse.BooleanOptionalAction)
 parser.add_argument('--config', type=str, required=False, default="conf.ndjson", help="Config file")
+parser.add_argument('--spec', type=str, required=False, default="spec/raftTrace.tla", help="TLA+ specification file")
 args = parser.parse_args()
 
 config = read_json(args.config)
@@ -53,4 +54,4 @@ trace_merger.run(files, sort=True, remove_meta=True, out="trace.ndjson", config=
 
 # Validate trace
 print("# Start TLA+ trace spec.\n")
-tla_trace_validation.run_tla("spec/raftTrace.tla", "trace.ndjson", "conf.ndjson")
+tla_trace_validation.run_tla(args.spec, "trace.ndjson", "conf.ndjson")

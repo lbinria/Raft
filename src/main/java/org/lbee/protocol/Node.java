@@ -5,7 +5,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.lbee.instrumentation.trace.TLATracer;
 import org.lbee.instrumentation.trace.VirtualField;
-import org.lbee.config.Configuration;
+import org.lbee.config.SimulationParameters;
 import org.lbee.protocol.state.CandidateState;
 import org.lbee.models.ClusterInfo;
 import org.lbee.models.Entry;
@@ -64,6 +64,8 @@ public class Node {
     // Election timeout
     private long electionTimeout;
 
+    private SimulationParameters parameters;
+
     // CommitIndex
     public int getLastLogIndex() {
         return logs.size();
@@ -97,10 +99,11 @@ public class Node {
     private final boolean classic_raft = false;
     private final boolean abstract_raft = true;
 
-    public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer) {
+    public Node(String nodeName, ClusterInfo clusterInfo, List<String> values, TLATracer tracer, SimulationParameters parameters) {
         this.clusterInfo = clusterInfo;
         this.values = values;
         this.nodeInfo = clusterInfo.getNode(nodeName);
+        this.parameters = parameters;
 
         this.term = 1;
         this.state = NodeState.Follower;
@@ -236,40 +239,40 @@ public class Node {
                 // throw new RuntimeException(e);
                 System.out.printf("Node %s couldn't shutdown.\n", nodeInfo.name());
             }
-        }, 60000);
+        }, parameters.getShutdownInterval());
 
         // Prepare heartbeat trigger
-        final IntervalTrigger sendHeartbeatTrigger =  new IntervalTrigger(() -> {
+        final IntervalTrigger sendHeartbeatTrigger = new IntervalTrigger(() -> {
             try {
-                if (state == NodeState.Leader)
-                    sendHeartbeat();
+            if (state == NodeState.Leader)
+                sendHeartbeat();
             } catch (IOException e) {
-                // throw new RuntimeException(e);
-                System.out.printf("Node %s couldn't heartbeat.\n", nodeInfo.name());
+            // throw new RuntimeException(e);
+            System.out.printf("Node %s couldn't heartbeat.\n", nodeInfo.name());
             }
-        }, 5000);
+        }, parameters.getSendHeartbeatInterval());
 
         // Restart node randomly
         final IntervalTrigger restartTrigger = new IntervalTrigger(() -> {
-            if ((randEvent.nextInt(0, 8) == 0) && (this.state == NodeState.Follower || this.state == NodeState.Candidate)) {
+            if ((randEvent.nextInt(0, parameters.getRestartProbability()) == 0) && (this.state == NodeState.Follower || this.state == NodeState.Candidate)) {
                 try {
                     restart();
                 } catch (InterruptedException | IOException e) {
                     throw new RuntimeException(e);
                 }
             }
-        }, 1000);
+        }, parameters.getRestartInterval());
 
         // Simulate client request (only leader can handle client request)
         final IntervalTrigger clientRequestTrigger = new IntervalTrigger(() -> {
-            if (randEvent.nextInt(0, 2) == 0) {
+            if (randEvent.nextInt(0, parameters.getClientRequestProbability()) == 0) {
                 try {
                     clientRequest();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             }
-        }, 1000);
+        }, parameters.getClientRequestInterval());
 
         // Append entries from time to time
         final IntervalTrigger appendEntriesTrigger = new IntervalTrigger(() -> {
@@ -279,12 +282,12 @@ public class Node {
             } catch (IOException e) {
                 System.out.printf("Node %s couldn't append entries.\n", nodeInfo.name());
             }
-        }, 1000);
+        }, parameters.getAppendEntriesInterval());
 
         // Display logs
         final IntervalTrigger displayLogTrigger = new IntervalTrigger(() -> {
             System.out.printf("LOG: %s.\n", logs.stream().map(Entry::getContent).collect(Collectors.toList()));
-        }, 3000);
+        }, parameters.getDisplayLogInterval());
 
         while (!shutdown) {
             // Leader sends heartbeat every 500ms
@@ -320,7 +323,7 @@ public class Node {
 
         // Next election timeout will be between 5-10 s.
         lastHeartbeat = System.currentTimeMillis();
-        electionTimeout = 5000 + randTimeout.nextInt(0, 5000);
+        electionTimeout = parameters.getMinElectionTimeout() + randTimeout.nextInt(parameters.getMaxElectionTimeout() - parameters.getMinElectionTimeout());
 
         // Change state to candidate
         toCandidate();
@@ -572,6 +575,7 @@ public class Node {
 
         System.out.printf("handleVoteReply %s.\n", m);
 
+
         // Add node that responded to my vote request
         candidateState.getResponded().add(m.getFrom());
 
@@ -595,7 +599,7 @@ public class Node {
             tracer.log("HandleRequestVoteResponse", new Object[] {nodeInfo.name(),m.getFrom()});
         }
 
-        if(abstract_raft){
+        if(abstract_raft && state != NodeState.Leader){
             this.traceRole.getField(m.getFrom()).update("follower");
             //this.traceTerm.getField(m.getFrom()).update(this.term);
             // /\ ballots' = [ballots EXCEPT ![s] = @ union {<<cdt, term[cdt]>>}]

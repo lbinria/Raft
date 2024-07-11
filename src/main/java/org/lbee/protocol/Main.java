@@ -1,10 +1,16 @@
 package org.lbee.protocol;
 
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.lbee.config.SimulationParameters;
 import org.lbee.config.Configuration;
 import org.lbee.instrumentation.clock.ClockException;
 import org.lbee.instrumentation.clock.ClockFactory;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.ObjectInputFilter.Config;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -19,6 +25,10 @@ public class Main {
 
         // Get node name to initialize
         final String nodeName = args[0];
+
+         // Read configuration file
+        ObjectMapper mapper = new ObjectMapper();
+        SimulationParameters parameters = mapper.readValue(new File("parameters.json"), SimulationParameters.class);
 
         // Write configuration
         final Configuration configuration = new Configuration("conf.ndjson");
@@ -37,7 +47,7 @@ public class Main {
                 ClockFactory.getClock(ClockFactory.FILE,"raft.clock"));
 
         // Init node
-        final Node node = new Node(nodeName, clusterInfo, values, spec);
+        final Node node = new Node(nodeName, clusterInfo, values, spec, parameters);
 
         // Initialize node and start node server
         node.start();

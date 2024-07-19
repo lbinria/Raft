@@ -350,6 +350,7 @@ public class Node {
         if(abstract_raft){
             this.traceRole.getField(this.nodeInfo.name()).update("candidate");
             this.traceTerm.getField(this.nodeInfo.name()).update(term);
+            
             //this.traceBallots.getField(this.nodeInfo.name()).add(term);
 
             tracer.log("Timeout", new Object[] { nodeInfo.name() });
@@ -442,7 +443,6 @@ public class Node {
             String stateString = this.state.toString().substring(0, 1).toUpperCase(Locale.ROOT) + this.state.toString().substring(1).toLowerCase(Locale.ROOT);
             this.traceState.getField(this.nodeInfo.name()).update(stateString);
             this.traceVotedFor.getField(this.nodeInfo.name()).update("null");
-
             tracer.log("UpdateTerm", new Object[] { nodeInfo.name() });
         }
 
@@ -603,7 +603,6 @@ public class Node {
             this.traceRole.getField(m.getFrom()).update("follower");
             //this.traceTerm.getField(m.getFrom()).update(this.term);
             // /\ ballots' = [ballots EXCEPT ![s] = @ union {<<cdt, term[cdt]>>}]
-
             
             tracer.log("Vote", new Object[] { m.getFrom() });
         }

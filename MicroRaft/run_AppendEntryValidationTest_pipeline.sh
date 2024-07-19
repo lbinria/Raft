@@ -1,0 +1,1 @@
+./mvnw clean test -Dtest=io.microraft.impl.AppendEntryValidationTest -DfailIfNoTests=false -Ptutorial && python trace_merger.py microraft/node1.ndjson microraft/node2.ndjson microraft/node3.ndjson --conf raft.ndjson.conf --sort True > trace-tla.ndjson && python tla_trace_validation.py spec/raftTrace.tla trace-tla.ndjson 

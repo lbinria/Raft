@@ -27,12 +27,16 @@ import io.microraft.impl.state.RaftState;
 import io.microraft.model.message.AppendEntriesFailureResponse;
 import io.microraft.model.message.AppendEntriesRequest;
 import io.microraft.model.message.AppendEntriesSuccessResponse;
+
+import org.lbee.instrumentation.trace.TLATracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 
 import static io.microraft.RaftRole.LEADER;
+
+import java.io.IOException;
 
 /**
  * Handles an {@link AppendEntriesSuccessResponse} which can be sent as a
@@ -53,8 +57,13 @@ public class AppendEntriesSuccessResponseHandler extends AbstractResponseHandler
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AppendEntriesSuccessResponseHandler.class);
 
-    public AppendEntriesSuccessResponseHandler(RaftNodeImpl raftNode, AppendEntriesSuccessResponse response) {
+    public final TLATracer tracer;
+
+    public AppendEntriesSuccessResponseHandler(RaftNodeImpl raftNode, AppendEntriesSuccessResponse response,
+            TLATracer tracer) {
         super(raftNode, response);
+
+        this.tracer = tracer;
     }
 
     @Override
@@ -82,12 +91,21 @@ public class AppendEntriesSuccessResponseHandler extends AbstractResponseHandler
             // SpecHelper.commitChanges(node.getSpec(), "HandleAppendEntriesResponse",
             // eventArgs);
 
+            /*
+             * try { this.tracer.log("HandleAppendEntriesResponse"); } catch (IOException e)
+             * { e.printStackTrace(); }
+             */
             if (!node.tryAdvanceCommitIndex()) {
                 trySendAppendRequest(response);
             }
         } else {
             // SpecHelper.commitChanges(node.getSpec(), "HandleAppendEntriesResponse",
             // eventArgs);
+
+            /*
+             * try { this.tracer.log("HandleAppendEntriesResponse"); } catch (IOException e)
+             * { e.printStackTrace(); }
+             */
 
             node.tryRunQueries();
         }

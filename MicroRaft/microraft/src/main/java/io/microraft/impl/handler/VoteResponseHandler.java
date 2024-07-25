@@ -19,8 +19,12 @@ package io.microraft.impl.handler;
 
 import static io.microraft.RaftRole.CANDIDATE;
 
+import java.io.IOException;
+
 import javax.annotation.Nonnull;
 
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 //import io.microraft.impl.util.SpecHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,8 +59,19 @@ public class VoteResponseHandler extends AbstractResponseHandler<VoteResponse> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(VoteResponseHandler.class);
 
-    public VoteResponseHandler(RaftNodeImpl raftNode, VoteResponse response) {
+    public final TLATracer tracer;
+
+    private final VirtualField traceTerm;
+
+    private final VirtualField traceRole;
+
+    public VoteResponseHandler(RaftNodeImpl raftNode, VoteResponse response, TLATracer tracer) {
         super(raftNode, response);
+
+        this.tracer = tracer;
+
+        this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
     }
 
     @Override
@@ -76,6 +91,15 @@ public class VoteResponseHandler extends AbstractResponseHandler<VoteResponse> {
             // TLA: to follower with update term
             node.toFollower(response.getTerm());
             // SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
+
+            try {
+                this.traceRole.getField(localEndpointStr()).update("follower");
+                this.traceTerm.getField(localEndpointStr()).update(response.getTerm());
+                tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
             return;
         } else if (response.getTerm() < state.term()) {
             LOGGER.warn("{} Stale {} is received, current term: {}", localEndpointStr(), response, state.term());
@@ -99,6 +123,11 @@ public class VoteResponseHandler extends AbstractResponseHandler<VoteResponse> {
          */
 
         // SpecHelper.commitChanges(node.getSpec(), "HandleRequestVoteResponse");
+
+        /*
+         * try { this.tracer.log("HandleRequestVoteResponse"); } catch (IOException e) {
+         * e.printStackTrace(); }
+         */
 
         if (candidateState.isMajorityGranted()) {
             LOGGER.info("{} We are the LEADER!", localEndpointStr());

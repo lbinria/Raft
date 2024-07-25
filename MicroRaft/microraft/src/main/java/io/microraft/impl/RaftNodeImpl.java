@@ -218,7 +218,8 @@ public final class RaftNodeImpl implements RaftNode {
         this.maxPendingLogEntryCount = config.getMaxPendingLogEntryCount();
         this.maxLogEntryCountToKeepAfterSnapshot = getMaxLogEntryCountToKeepAfterSnapshot(commitCountToTakeSnapshot);
         int logCapacity = getLogCapacity(commitCountToTakeSnapshot, maxPendingLogEntryCount);
-        this.state = RaftState.create(groupId, localEndpoint, initialGroupMembers, logCapacity, store, modelFactory);
+        this.state = RaftState.create(groupId, localEndpoint, initialGroupMembers, logCapacity, store, modelFactory,
+                tracer);
         this.maxBackoffRounds = getMaxBackoffRounds(config);
         this.random = requireNonNull(random);
         this.clock = requireNonNull(clock);
@@ -248,7 +249,7 @@ public final class RaftNodeImpl implements RaftNode {
         this.maxPendingLogEntryCount = config.getMaxPendingLogEntryCount();
         this.maxLogEntryCountToKeepAfterSnapshot = getMaxLogEntryCountToKeepAfterSnapshot(commitCountToTakeSnapshot);
         int logCapacity = getLogCapacity(commitCountToTakeSnapshot, maxPendingLogEntryCount);
-        this.state = RaftState.restore(groupId, restoredState, logCapacity, store, modelFactory);
+        this.state = RaftState.restore(groupId, restoredState, logCapacity, store, modelFactory, tracer);
         this.maxBackoffRounds = getMaxBackoffRounds(config);
         this.random = requireNonNull(random);
         this.clock = requireNonNull(clock);
@@ -671,19 +672,21 @@ public final class RaftNodeImpl implements RaftNode {
 
         Runnable handler;
         if (message instanceof AppendEntriesRequest) {
-            handler = new AppendEntriesRequestHandler(this, (AppendEntriesRequest) message);
+            handler = new AppendEntriesRequestHandler(this, (AppendEntriesRequest) message, this.tracer);
         } else if (message instanceof AppendEntriesSuccessResponse) {
-            handler = new AppendEntriesSuccessResponseHandler(this, (AppendEntriesSuccessResponse) message);
+            handler = new AppendEntriesSuccessResponseHandler(this, (AppendEntriesSuccessResponse) message,
+                    this.tracer);
         } else if (message instanceof AppendEntriesFailureResponse) {
-            handler = new AppendEntriesFailureResponseHandler(this, (AppendEntriesFailureResponse) message);
+            handler = new AppendEntriesFailureResponseHandler(this, (AppendEntriesFailureResponse) message,
+                    this.tracer);
         } else if (message instanceof InstallSnapshotRequest) {
-            handler = new InstallSnapshotRequestHandler(this, (InstallSnapshotRequest) message);
+            handler = new InstallSnapshotRequestHandler(this, (InstallSnapshotRequest) message, this.tracer);
         } else if (message instanceof InstallSnapshotResponse) {
-            handler = new InstallSnapshotResponseHandler(this, (InstallSnapshotResponse) message);
+            handler = new InstallSnapshotResponseHandler(this, (InstallSnapshotResponse) message, this.tracer);
         } else if (message instanceof VoteRequest) {
-            handler = new VoteRequestHandler(this, (VoteRequest) message);
+            handler = new VoteRequestHandler(this, (VoteRequest) message, this.tracer);
         } else if (message instanceof VoteResponse) {
-            handler = new VoteResponseHandler(this, (VoteResponse) message);
+            handler = new VoteResponseHandler(this, (VoteResponse) message, this.tracer);
         } else if (message instanceof PreVoteRequest) {
             handler = new PreVoteRequestHandler(this, (PreVoteRequest) message);
         } else if (message instanceof PreVoteResponse) {
@@ -1429,6 +1432,12 @@ public final class RaftNodeImpl implements RaftNode {
          * target.getId().toString()});
          */
 
+        try {
+            this.tracer.log("AppendEntry");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         send(target, request);
 
         if (backoff) {
@@ -1563,12 +1572,6 @@ public final class RaftNodeImpl implements RaftNode {
              * SpecHelper.commitChanges(spec, "RequestVoteRequest");
              */
 
-            try {
-                this.tracer.log("RequestVoteRequest");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
             send(member, request);
         }
 
@@ -1676,6 +1679,13 @@ public final class RaftNodeImpl implements RaftNode {
                  * SpecHelper.commitChanges(SpecHelper.get(getLocalEndpoint().getId().toString()
                  * ), "AdvanceCommitIndex", eventArgs);
                  */
+
+                try {
+                    this.tracer.log("LeaderCommit", new Object[]{getLocalEndpoint().getId().toString()});
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
                 System.out.printf("ADVANCE COMMIT INDEX: %s.\n", quorumMatchIndex);
                 commitEntries(quorumMatchIndex);
                 return true;
@@ -1689,6 +1699,13 @@ public final class RaftNodeImpl implements RaftNode {
          * SpecHelper.commitChanges(SpecHelper.get(getLocalEndpoint().getId().toString()
          * ), "AdvanceCommitIndex", eventArgs);
          */
+
+        try {
+            this.tracer.log("LeaderCommit", new Object[]{getLocalEndpoint().getId().toString()});
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         return false;
     }
 

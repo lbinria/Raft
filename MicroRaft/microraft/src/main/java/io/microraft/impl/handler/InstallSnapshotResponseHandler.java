@@ -22,6 +22,8 @@ import static io.microraft.RaftRole.LEARNER;
 
 import javax.annotation.Nonnull;
 
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 //import io.microraft.impl.util.SpecHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,8 +64,19 @@ public class InstallSnapshotResponseHandler extends AbstractResponseHandler<Inst
 
     private static final Logger LOGGER = LoggerFactory.getLogger(InstallSnapshotResponseHandler.class);
 
-    public InstallSnapshotResponseHandler(RaftNodeImpl raftNode, InstallSnapshotResponse response) {
+    public final TLATracer tracer;
+
+    private final VirtualField traceTerm;
+
+    private final VirtualField traceRole;
+
+    public InstallSnapshotResponseHandler(RaftNodeImpl raftNode, InstallSnapshotResponse response, TLATracer tracer) {
         super(raftNode, response);
+
+        this.tracer = tracer;
+
+        this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
     }
 
     @Override
@@ -75,6 +88,14 @@ public class InstallSnapshotResponseHandler extends AbstractResponseHandler<Inst
                 LOGGER.warn("{} Ignored invalid response {} for current term: {}", localEndpointStr(), response,
                         state.term());
                 // SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
+
+                try {
+                    this.traceRole.getField(localEndpointStr()).update("follower");
+                    this.traceTerm.getField(localEndpointStr()).update(response.getTerm());
+                    tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
                 return;
             } else if (state.role() != FOLLOWER && state.role() != LEARNER) {
                 // If the request term is greater than the local term,
@@ -84,6 +105,14 @@ public class InstallSnapshotResponseHandler extends AbstractResponseHandler<Inst
 
                 node.toFollower(response.getTerm());
                 // SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
+
+                try {
+                    this.traceRole.getField(localEndpointStr()).update("follower");
+                    this.traceTerm.getField(localEndpointStr()).update(response.getTerm());
+                    tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
 

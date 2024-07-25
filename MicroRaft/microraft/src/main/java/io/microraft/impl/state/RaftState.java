@@ -40,6 +40,9 @@ import java.util.Map.Entry;
 //import io.microraft.impl.util.SpecHelper;
 import io.microraft.model.log.BaseLogEntry;
 import io.microraft.tlavalidation.models.messages.RequestVoteRequest;
+
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -189,8 +192,12 @@ public final class RaftState {
      */
     private SnapshotChunkCollector snapshotChunkCollector;
 
+    public final TLATracer tracer;
+
+    private final VirtualField traceRole;
+
     private RaftState(Object groupId, RaftEndpoint localEndpoint, RaftGroupMembersView initialGroupMembers,
-            int logCapacity, RaftStore store, RaftModelFactory modelFactory) {
+            int logCapacity, RaftStore store, RaftModelFactory modelFactory, TLATracer tracer) {
         this.groupId = requireNonNull(groupId);
         this.localEndpoint = requireNonNull(localEndpoint);
         if (requireNonNull(initialGroupMembers).getLogIndex() != 0) {
@@ -207,10 +214,12 @@ public final class RaftState {
         this.store = requireNonNull(store);
         this.log = RaftLog.create(logCapacity, store);
         this.modelFactory = modelFactory;
+        this.tracer = tracer;
+        this.traceRole = tracer.getVariableTracer("role");
     }
 
     private RaftState(Object groupId, RestoredRaftState restoredState, int logCapacity, RaftStore store,
-            RaftModelFactory modelFactory) {
+            RaftModelFactory modelFactory, TLATracer tracer) {
         this.groupId = requireNonNull(groupId);
         this.localEndpoint = requireNonNull(restoredState).getLocalEndpointPersistentState().getLocalEndpoint();
         this.role = restoredState.getLocalEndpointPersistentState().isVoting() ? FOLLOWER : LEARNER;
@@ -236,26 +245,29 @@ public final class RaftState {
         this.store = requireNonNull(store);
         this.log = RaftLog.restore(logCapacity, snapshot, restoredState.getLogEntries(), store);
         this.modelFactory = modelFactory;
+        this.tracer = tracer;
+        this.traceRole = tracer.getVariableTracer("role");
     }
 
     public static RaftState create(Object groupId, RaftEndpoint localEndpoint, RaftGroupMembersView initialGroupMembers,
-            int logCapacity, RaftModelFactory modelFactory) {
-        return create(groupId, localEndpoint, initialGroupMembers, logCapacity, new NopRaftStore(), modelFactory);
+            int logCapacity, RaftModelFactory modelFactory, TLATracer tracer) {
+        return create(groupId, localEndpoint, initialGroupMembers, logCapacity, new NopRaftStore(), modelFactory,
+                tracer);
     }
 
     public static RaftState create(Object groupId, RaftEndpoint localEndpoint, RaftGroupMembersView initialGroupMembers,
-            int logCapacity, RaftStore store, RaftModelFactory modelFactory) {
-        return new RaftState(groupId, localEndpoint, initialGroupMembers, logCapacity, store, modelFactory);
+            int logCapacity, RaftStore store, RaftModelFactory modelFactory, TLATracer tracer) {
+        return new RaftState(groupId, localEndpoint, initialGroupMembers, logCapacity, store, modelFactory, tracer);
     }
 
     public static RaftState restore(Object groupId, RestoredRaftState restoredState, int logCapacity,
-            RaftModelFactory modelFactory) {
-        return restore(groupId, restoredState, logCapacity, new NopRaftStore(), modelFactory);
+            RaftModelFactory modelFactory, TLATracer tracer) {
+        return restore(groupId, restoredState, logCapacity, new NopRaftStore(), modelFactory, tracer);
     }
 
     public static RaftState restore(Object groupId, RestoredRaftState restoredState, int logCapacity, RaftStore store,
-            RaftModelFactory modelFactory) {
-        return new RaftState(groupId, restoredState, logCapacity, store, modelFactory);
+            RaftModelFactory modelFactory, TLATracer tracer) {
+        return new RaftState(groupId, restoredState, logCapacity, store, modelFactory, tracer);
     }
 
     /**
@@ -523,6 +535,13 @@ public final class RaftState {
          * "Timeout");
          */
 
+        try {
+            this.traceRole.getField(localEndpoint.getId().toString()).update("candidate");
+            this.tracer.log("Timeout", new Object[]{localEndpoint.getId().toString()});
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         candidateState = new CandidateState(leaderElectionQuorumSize());
 
         // Vote for himself
@@ -538,12 +557,23 @@ public final class RaftState {
          * SpecHelper.commitChanges(SpecHelper.get(localEndpoint.getId().toString()),
          * "RequestVoteRequest");
          */
+
+        /*
+         * try { this.tracer.log("RequestVoteRequest"); } catch (IOException e) {
+         * e.printStackTrace(); }
+         */
+
         // votedFor
         grantVote(newTerm, localEndpoint);
 
         /*
          * SpecHelper.commitChanges(SpecHelper.get(localEndpoint.getId().toString()),
          * "HandleRequestVoteRequest");
+         */
+
+        /*
+         * try { this.tracer.log("HandleRequestVoteRequest"); } catch (IOException e) {
+         * e.printStackTrace(); }
          */
 
         candidateState.grantVote(localEndpoint);
@@ -559,6 +589,11 @@ public final class RaftState {
         // granted
         // SpecHelper.commitChanges(SpecHelper.get(localEndpoint.getId().toString()),
         // "HandleRequestVoteResponse");
+
+        /*
+         * try { this.tracer.log("HandleRequestVoteResponse"); } catch (IOException e) {
+         * e.printStackTrace(); }
+         */
     }
 
     private void promoteToVotingMember() throws IOException {
@@ -638,6 +673,13 @@ public final class RaftState {
          * SpecHelper.commitChanges(SpecHelper.get(localEndpoint.getId().toString()),
          * "BecomeLeader");
          */
+
+        try {
+            this.tracer.log("ElectLeader", new Object[]{localEndpoint.getId().toString()});
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         leader(localEndpoint);
         preCandidateState = null;
         candidateState = null;

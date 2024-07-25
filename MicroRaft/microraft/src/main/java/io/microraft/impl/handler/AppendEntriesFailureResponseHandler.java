@@ -19,8 +19,12 @@ package io.microraft.impl.handler;
 
 import static io.microraft.RaftRole.LEADER;
 
+import java.io.IOException;
+
 import javax.annotation.Nonnull;
 
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 //import io.microraft.impl.util.SpecHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,8 +54,20 @@ public class AppendEntriesFailureResponseHandler extends AbstractResponseHandler
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AppendEntriesFailureResponseHandler.class);
 
-    public AppendEntriesFailureResponseHandler(RaftNodeImpl raftNode, AppendEntriesFailureResponse response) {
+    public final TLATracer tracer;
+
+    private final VirtualField traceTerm;
+
+    private final VirtualField traceRole;
+
+    public AppendEntriesFailureResponseHandler(RaftNodeImpl raftNode, AppendEntriesFailureResponse response,
+            TLATracer tracer) {
         super(raftNode, response);
+
+        this.tracer = tracer;
+
+        this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
     }
 
     @Override
@@ -68,6 +84,15 @@ public class AppendEntriesFailureResponseHandler extends AbstractResponseHandler
                     response.getTerm(), response, state.term());
             node.toFollower(response.getTerm());
             // SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
+
+            try {
+                this.traceRole.getField(localEndpointStr()).update("follower");
+                this.traceTerm.getField(localEndpointStr()).update(response.getTerm());
+                tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
             return;
         }
 

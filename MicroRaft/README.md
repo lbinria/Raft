@@ -65,6 +65,37 @@ Add MicroRaft to your dependency list:
 Pull the latest code with `gh repo clone MicroRaft/MicroRaft`
 and build with `cd MicroRaft && ./mvnw clean package`.
 
+#### Example usage
+
+Run the trace validation pipeline with compilation:
+```bash
+python trace_validation_pipeline.py -c
+```
+
+Run the trace validation pipeline with a custom TLA+ specification file:
+
+```bash
+python trace_validation_pipeline.py --spec spec_abstract/raftTrace.tla
+```
+
+It consists of the following steps:
+- clean old trace files
+- compile implementation of Raft
+- run implementation of Raft
+- [merge trace files / config into one trace file (when different processes produce different trace files)]
+- Run TLC on the resulting trace file
+
+### Perform trace validation on a trace file
+
+Alternatively, we can run the implementation with the command
+
+`python run_impl.py`
+
+and then perform the trace validation on the obtained trace file
+`trace.ndjson` by using the command:
+
+`python tla_trace_validation.py spec/raftTrace.tla --trace trace.ndjson`
+
 ## Source code layout
 
 `microraft` module contains the source code of MicroRaft along with its unit

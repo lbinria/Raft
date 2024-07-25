@@ -30,6 +30,8 @@ import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
 
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 //import io.microraft.impl.util.SpecHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,8 +87,19 @@ public class InstallSnapshotRequestHandler extends AbstractMessageHandler<Instal
 
     private static final Logger LOGGER = LoggerFactory.getLogger(InstallSnapshotRequestHandler.class);
 
-    public InstallSnapshotRequestHandler(RaftNodeImpl raftNode, InstallSnapshotRequest request) {
+    public final TLATracer tracer;
+
+    private final VirtualField traceTerm;
+
+    private final VirtualField traceRole;
+
+    public InstallSnapshotRequestHandler(RaftNodeImpl raftNode, InstallSnapshotRequest request, TLATracer tracer) {
         super(raftNode, request);
+
+        this.tracer = tracer;
+
+        this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
     }
 
     @Override
@@ -138,6 +151,17 @@ public class InstallSnapshotRequestHandler extends AbstractMessageHandler<Instal
              * if (request.getTerm() > state.term())
              * SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
              */
+
+            try {
+                if (request.getTerm() > state.term()) {
+                    this.traceRole.getField(localEndpointStr()).update("follower");
+                    this.traceTerm.getField(localEndpointStr()).update(request.getTerm());
+                    tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
             if (!request.isSenderLeader()) {
                 return;
             }

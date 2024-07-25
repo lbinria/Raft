@@ -25,6 +25,7 @@ import static java.lang.Math.min;
 import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 
+import java.io.IOException;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.List;
 import java.util.Map.Entry;
@@ -32,6 +33,8 @@ import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
 
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 //import io.microraft.impl.util.SpecHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,8 +67,19 @@ public class AppendEntriesRequestHandler extends AbstractMessageHandler<AppendEn
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AppendEntriesRequestHandler.class);
 
-    public AppendEntriesRequestHandler(RaftNodeImpl raftNode, AppendEntriesRequest request) {
+    public final TLATracer tracer;
+
+    private final VirtualField traceTerm;
+
+    private final VirtualField traceRole;
+
+    public AppendEntriesRequestHandler(RaftNodeImpl raftNode, AppendEntriesRequest request, TLATracer tracer) {
         super(raftNode, request);
+
+        this.tracer = tracer;
+
+        this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
     }
 
     @Override
@@ -91,6 +105,7 @@ public class AppendEntriesRequestHandler extends AbstractMessageHandler<AppendEn
              * "HandleAppendEntriesRequest", new
              * Object[]{localEndpoint().getId().toString(), leader.getId().toString()});
              */
+
             node.send(leader, createAppendEntriesFailureResponse(state.term(), 0, 0));
             return;
         }
@@ -108,6 +123,16 @@ public class AppendEntriesRequestHandler extends AbstractMessageHandler<AppendEn
             // TLA:
             // if (request.getTerm() > state.term())
             // SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
+
+            try {
+                if (request.getTerm() > state.term()) {
+                    this.traceRole.getField(localEndpointStr()).update("follower");
+                    this.traceTerm.getField(localEndpointStr()).update(request.getTerm());
+                    tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         if (!leader.equals(state.leader())) {
@@ -217,6 +242,8 @@ public class AppendEntriesRequestHandler extends AbstractMessageHandler<AppendEn
              * "HandleAppendEntriesRequest", new
              * Object[]{localEndpoint().getId().toString(), leader.getId().toString()});
              */
+
+            /* this.tracer.log("HandleAppendEntriesRequest"); */
 
             node.send(leader, response);
         } catch (Exception ex) {

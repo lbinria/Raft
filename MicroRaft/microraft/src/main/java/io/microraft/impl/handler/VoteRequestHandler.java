@@ -20,8 +20,12 @@ package io.microraft.impl.handler;
 import static io.microraft.RaftRole.LEARNER;
 import static java.util.Objects.requireNonNull;
 
+import java.io.IOException;
+
 import javax.annotation.Nonnull;
 
+import org.lbee.instrumentation.trace.TLATracer;
+import org.lbee.instrumentation.trace.VirtualField;
 //import io.microraft.impl.util.SpecHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,8 +56,19 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(VoteRequestHandler.class);
 
-    public VoteRequestHandler(RaftNodeImpl raftNode, VoteRequest request) {
+    public final TLATracer tracer;
+
+    private final VirtualField traceTerm;
+
+    private final VirtualField traceRole;
+
+    public VoteRequestHandler(RaftNodeImpl raftNode, VoteRequest request, TLATracer tracer) {
         super(raftNode, request);
+
+        this.tracer = tracer;
+
+        this.traceRole = tracer.getVariableTracer("role");
+        this.traceTerm = tracer.getVariableTracer("term");
     }
 
     @Override
@@ -80,6 +95,12 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
         // Reply false if term < currentTerm (§5.1)
         if (state.term() > candidateTerm) {
             // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
+
+            /*
+             * try { this.tracer.log(eventName); } catch (IOException e) {
+             * e.printStackTrace(); }
+             */
+
             LOGGER.info("{} Rejecting {} since current term: {} is bigger.", localEndpointStr(), request, state.term());
             node.send(candidate, responseBuilder.setTerm(state.term()).setGranted(false).build());
             if (state.leaderState() != null) {
@@ -104,6 +125,12 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
             LOGGER.info("{} Rejecting {} since the leader is still alive...", localEndpointStr(), request);
 
             // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
+
+            /*
+             * try { this.tracer.log(eventName); } catch (IOException e) {
+             * e.printStackTrace(); }
+             */
+
             node.send(candidate, responseBuilder.setTerm(state.term()).setGranted(false).build());
             return;
         }
@@ -116,6 +143,14 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
 
             node.toFollower(candidateTerm);
             // SpecHelper.commitChanges(node.getSpec(), "UpdateTerm");
+
+            try {
+                this.traceRole.getField(localEndpointStr()).update("follower");
+                this.traceTerm.getField(localEndpointStr()).update(candidateTerm);
+                tracer.log("UpdateTerm", new Object[]{localEndpointStr()});
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
         if (state.leader() != null && !candidate.equals(state.leader())) {
@@ -123,6 +158,11 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
                     state.leader().getId());
 
             // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
+
+            /*
+             * try { this.tracer.log(eventName); } catch (IOException e) {
+             * e.printStackTrace(); }
+             */
             node.send(candidate, responseBuilder.setTerm(candidateTerm).setGranted(false).build());
 
             return;
@@ -138,6 +178,12 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
             }
 
             // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
+
+            /*
+             * try { this.tracer.log(eventName); } catch (IOException e) {
+             * e.printStackTrace(); }
+             */
+
             node.send(candidate, responseBuilder.setTerm(candidateTerm).setGranted(granted).build());
             return;
         }
@@ -149,6 +195,11 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
 
             // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
 
+            /*
+             * try { this.tracer.log(eventName); } catch (IOException e) {
+             * e.printStackTrace(); }
+             */
+
             node.send(candidate, responseBuilder.setTerm(candidateTerm).setGranted(false).build());
             return;
         }
@@ -158,6 +209,10 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
                     lastLogEntry.getIndex());
 
             // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
+            /*
+             * try { this.tracer.log(eventName); } catch (IOException e) {
+             * e.printStackTrace(); }
+             */
 
             node.send(candidate, responseBuilder.setTerm(candidateTerm).setGranted(false).build());
             return;
@@ -171,6 +226,13 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
         state.grantVote(candidateTerm, candidate);
 
         // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
+
+        try {
+            this.tracer.log(eventName);
+            tracer.log("Vote", new Object[]{localEndpointStr()});
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
         node.send(candidate, responseBuilder.setTerm(candidateTerm).setGranted(true).build());
     }

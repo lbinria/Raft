@@ -227,12 +227,12 @@ public class VoteRequestHandler extends AbstractMessageHandler<VoteRequest> {
 
         // SpecHelper.commitChanges(node.getSpec(), eventName, eventArgs);
 
-        try {
+        /* try {
             this.tracer.log(eventName);
             tracer.log("Vote", new Object[]{localEndpointStr()});
         } catch (IOException e) {
             e.printStackTrace();
-        }
+        } */
 
         node.send(candidate, responseBuilder.setTerm(candidateTerm).setGranted(true).build());
     }

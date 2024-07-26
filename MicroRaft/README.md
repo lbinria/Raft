@@ -94,7 +94,7 @@ Alternatively, we can run the implementation with the command
 and then perform the trace validation on the obtained trace file
 `trace.ndjson` by using the command:
 
-`python tla_trace_validation.py spec/raftTrace.tla --trace trace.ndjson`
+`python tla_trace_validation.py ../spec_abstract/raftTrace.tla --trace trace.ndjson`
 
 ## Source code layout
 
